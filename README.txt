@@ -108,10 +108,9 @@ actually store an instance x of A in the storage, though, you need to
 commit a reference to x in some object that is already stored in the
 database.  The root object is always there, for example, so you can do
 something like this:
-
-    from durus.persistent import Persistent       
-    class A(Persistent):
-        pass
+    
+    # Assume mymodule defines A as a subclass of Persistent.
+    from mymodule import A 
     x = A()
     root = connection.get_root() # connection set as shown above.
     root["sample"] = x           # root is dict-like

@@ -36,6 +36,11 @@ else:
     def lock_file(file):
         raise RuntimeError("File locking isn't available on your OS.")
 
+if hasattr(os, 'fsync'):
+    fsync = os.fsync
+else:
+    def fsync(fd):
+        pass
 
 class FileStorage(Storage):
     """
@@ -177,6 +182,7 @@ class FileStorage(Storage):
         self.fp.seek(0, 2)
         tid, index = self._write_transaction(self.fp, self.pending_records)
         self.fp.flush()
+        fsync(self.fp)
         self.index.update(index)
         del self.pending_records[:]
         return tid

@@ -65,7 +65,7 @@ class ReadConflictError(ConflictError):
     """
 
 
-class ProtocolError:
+class ProtocolError(DurusError):
     """
     An error occurred during communication between the storage server
     and the client.

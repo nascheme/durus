@@ -1,0 +1,15 @@
+* 2004/07/31: 24846 1.0 Minor Update
+
+Fix obscure bug in storage_server during logging.
+
+Set version number at 1.0.
+
+Repaired example in README.txt.
+
+Added FAQ.
+
+Made ProtocolError inherit from DurusError.
+
+Added fsync() after writing transaction data.
+
+* 2004/07/27: 24791 0.1 Initial Release 

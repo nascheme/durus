@@ -135,8 +135,9 @@ class StorageServer:
             i += rlen
             oid = record[:8]
             if logging_debug:
-                log(10, '  oid=%-6s rlen=%-6s %s',
-                    u64(oid), rlen, extract_class_name(record))
+                # extract_class_name() expects a record with a tid.
+                class_name = extract_class_name('faketid:' + record)
+                log(10, '  oid=%-6s rlen=%-6s %s', u64(oid), rlen, class_name)
             # storage will add tid
             self.storage.store(record)
             oids.append(oid)

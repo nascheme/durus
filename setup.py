@@ -9,7 +9,7 @@ persistent = Extension(name="durus._persistent",
                        sources=["_persistent.c"])
 
 setup(name = "Durus",
-      version = "0.1",
+      version = "1.0",
       description = "A Python Object Database",
       long_description = """
       Serves and manages changes to persistent objects being used in

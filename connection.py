@@ -105,7 +105,7 @@ class Connection(object):
         record = record[8:]
         if tid > self.tid:
             # might need to generate a read conflict.  If none of the
-            # invalid OIDs are active in our cache then we are okay.
+            # invalid OIDs were loaded by this connection then we are okay.
             self.tid, invalid_oids = self.storage.sync()
             self._handle_invalidations(invalid_oids, read_oid=oid)
         oid2, data, refdata = unpack_record(record)
