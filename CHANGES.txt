@@ -1,3 +1,7 @@
+1.5 (2005-3-07) r26296:
+
+    * A small change makes Persistent instances pickle-able.
+
 1.4 (2005-1-14) r25851:
 
     * Revise serialize.py to avoid using cPickle.noload(), which can't handle

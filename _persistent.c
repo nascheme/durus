@@ -123,7 +123,7 @@ static PyMemberDef persistent_members[] = {
 };
 
 static char persistent_doc[] = "\
-This the C implementation of PersistentBase.\n\
+This is the C implementation of PersistentBase.\n\
     Instance attributes:\n\
       _p_touched: 0 | 1\n\
       _p_status: -1 | 0 | 1\n\
@@ -132,7 +132,7 @@ This the C implementation of PersistentBase.\n\
 static PyTypeObject Persistent_Type = {
     PyObject_HEAD_INIT(0)
     0,					/* ob_size */
-    "_persistent.PersistentBase",	/* tp_name */
+    "durus.persistent.PersistentBase",	/* tp_name */
     sizeof(PersistentObject),		/* tp_basicsize */
     0,					/* tp_itemsize */
     0,					/* tp_dealloc */

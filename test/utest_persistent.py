@@ -3,6 +3,7 @@
 $URL$
 $Id$
 """
+from cPickle import dumps, loads
 from sancho.utest import UTest
 from durus.persistent import Persistent
 from durus.file_storage import TempFileStorage
@@ -59,6 +60,12 @@ class Test (UTest):
         root._p_set_status_ghost()
         assert root._p_is_ghost()
         root._p_set_status_unsaved()
+
+    def pickling(self):
+        a = Persistent()
+        pickle_a = dumps(a, 2) # Pickle protocol 2 is required.
+        b = loads(pickle_a)
+        assert isinstance(b, Persistent)
 
 if __name__ == "__main__":
     Test()
