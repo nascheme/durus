@@ -1,0 +1,52 @@
+.TH DURUS "1" 2004-08-25
+.SH NAME
+durus \- a persistent object storage system for Python applications
+.SH SYNOPSIS
+.B durus
+{
+.B \-s
+|
+.B \-c
+|
+.B \-p
+}
+[
+.B \-h
+|
+.I options
+]
+.SH DESCRIPTION
+Durus offers an easy way to use and maintain a consistent collection of object
+instances used by one or more processes.  Access and change of a persistent
+instances is managed through a cached Connection instance which includes
+commit() and abort() methods so that changes are transactional.  Since Durus
+aggressively caches data and does not use locking, it is best suited for
+applications where persistent state is relatively stable.
+.PP
+This command is a wrapper around the various Durus command line scripts.  It
+can be used to start and stop Durus storage servers, start a low-level
+interactive client, or pack a storage file.
+
+.SH COMMAND LINE OPTIONS
+.TP
+.B \-s
+Start or stop a Durus storage server.
+.TP
+.B \-c
+Start a low-level interactive client.
+.TP
+.B \-p
+Pack a storage file.
+.TP
+.B \-h
+Display a help message for the selected command.
+
+.SH INTERNET RESOURCES
+Main website:  http://www.mems-exchange.org/software/durus/
+.br
+Mailing list:  durus-users@mems-exchange.org
+.br
+.SH LICENSING
+Durus is distributed under the CNRI Open Source license.  See the file
+"LICENSE.txt" in the source distribution for information on terms &
+conditions.

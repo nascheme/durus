@@ -1,5 +1,7 @@
 #!/www/python/bin/python
-"""$URL$
+#!/www/python/bin/python
+"""
+$URL$
 $Id$
 """
 from optparse import OptionParser
@@ -8,7 +10,7 @@ from durus.storage_server import DEFAULT_PORT, DEFAULT_HOST, wait_for_server
 from durus.client_storage import ClientStorage
 from durus.connection import Connection
 
-def main():
+def pack_storage_main():
     parser = OptionParser()
     parser.set_description("Packs a Durus storage.")
     parser.add_option(
@@ -31,4 +33,4 @@ def main():
     connection.pack()
 
 if __name__ == '__main__':
-    main()
+    pack_storage_main()

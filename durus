@@ -1,0 +1,32 @@
+#!/www/python/bin/python
+"""
+$URL$
+$Id$
+"""
+import sys
+
+def usage():
+    print ('durus [ -c | -s | -p ] [ -h ] [<specific options>]\n'
+           '    -s   Start or stop a Durus storage server.\n'
+           '    -c   Start a low-level interactive client.\n'
+           '    -p   Pack a storage file.\n'
+           '    -h   Get help on specific options.\n')
+
+if len(sys.argv) == 1:
+    usage()
+else:
+    arg = sys.argv[1]
+    sys.argv[1:] = sys.argv[2:]
+    if arg == '-c':
+        from durus.client import client_main
+        client_main()
+    elif arg == '-s':
+        from durus.run_durus import run_durus_main
+        run_durus_main()
+    elif arg == '-p':
+        from durus.pack_storage import pack_storage_main
+        pack_storage_main()                        
+    else:
+        usage()
+
+

@@ -10,7 +10,7 @@ from durus.storage_server import DEFAULT_PORT, DEFAULT_HOST, StorageServer
 from durus.file_storage import FileStorage, TempFileStorage
 from durus.logger import log, logger, direct_output
 
-def run_durus(logfile, logginglevel, file, repair, readonly, host, port):
+def start_durus(logfile, logginglevel, file, repair, readonly, host, port):
     if logfile is None:
         logfile = sys.stderr
     else:
@@ -34,9 +34,8 @@ def stop_durus(host, port):
                          (host, port))
     sock.send('Q') # graceful exit message
     sock.close()
-    
 
-if __name__ == '__main__':
+def run_durus_main():
     parser = OptionParser()
     parser.set_description('Run a Durus Server')
     parser.add_option(
@@ -70,13 +69,18 @@ if __name__ == '__main__':
         help='Instead of starting the server, try to stop a running one.')
     (options, args) = parser.parse_args()
     if not options.stop:
-        run_durus(options.logfile,
-                  options.logginglevel,
-                  options.file,
-                  options.repair,
-                  options.readonly,
-                  options.host,
-                  options.port)
+        start_durus(options.logfile,
+                    options.logginglevel,
+                    options.file,
+                    options.repair,
+                    options.readonly,
+                    options.host,
+                    options.port)
     else:
         stop_durus(options.host,
                    options.port)
+
+
+if __name__ == '__main__':
+    run_durus_main()
+

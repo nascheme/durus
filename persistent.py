@@ -109,7 +109,11 @@ class Persistent(PersistentBase):
         lambda self, value: value and self._p_note_change())
 
     def __repr__(self):
-         return "<%s %s>" % (self.__class__.__name__, self._p_format_oid())
+        if self._p_oid is None:
+            identifier = '@%x' % id(self)
+        else:
+            identifier = self._p_format_oid()
+        return "<%s %s>" % (self.__class__.__name__, identifier)
 
     def __delattr__(self, name):
         self._p_note_change()

@@ -31,6 +31,7 @@ def interactive_client(file, host, port, cache_size, readonly, repair):
         storage = FileStorage(file, readonly=readonly, repair=repair)
         description = file
     else:
+        wait_for_server(host, port)
         storage = ClientStorage(host=host, port=port)
         description = "%s:%s" % (host, port)
     connection = Connection(storage, cache_size=cache_size)
@@ -78,8 +79,6 @@ def client_main():
         '--readonly', dest='readonly', action='store_true',
         help='Open the file in read-only mode.')
     (options, args) = parser.parse_args()
-    if options.file is None:
-        wait_for_server(options.host, options.port)
     interactive_client(options.file, options.host, options.port,
                        options.cache_size, options.readonly, options.repair)
 

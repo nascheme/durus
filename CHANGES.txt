@@ -1,15 +1,34 @@
-* 2004/07/31: 24846 1.0 Minor Update
+1.2 (2004-09-08) r25044:
 
-Fix obscure bug in storage_server during logging.
+    * Add durus command line tool.
 
-Set version number at 1.0.
+    * Add btree module.
 
-Repaired example in README.txt.
+    * Update pack() so that it works on Windows and so that it gets a lock 
+      again after the pack is completed. 
 
-Added FAQ.
+1.1 (2004-08-05) r24872:
 
-Made ProtocolError inherit from DurusError.
+    * Provide a close() method for FileStorage.  Call appropriate win32
+      unlock function.
 
-Added fsync() after writing transaction data.
+    * Remember to lock the new file created by pack().  Unlock the
+      old file.
 
-* 2004/07/27: 24791 0.1 Initial Release 
+
+1.0 (2004-07-31) r24846:
+
+    * Fix obscure bug in storage_server during logging.
+
+    * Repaired example in README.txt.
+
+    * Added FAQ.
+
+    * Made ProtocolError inherit from DurusError.
+
+    * Added fsync() after writing transaction data.
+
+
+0.1 (2004-07-27) r24791:
+
+    * Initial Release 

@@ -1,4 +1,3 @@
-
 This is Durus, a persistent object system for applications written
 in the Python programming language.
 
@@ -13,6 +12,7 @@ extensible server-side information services, you should read more
 about CNRI's Digital Object Store® at
 http://www.cnri.reston.va.us/digital_object_store.html.
 
+
 * Overview:
 
 Durus offers an easy way to use and maintain a consistent collection
@@ -25,39 +25,41 @@ million instances with relatively stable state.
 
 * Quick Demo:
 
-Run "run_durus.py" in one window.  This starts a durus storage server
+Run "durus -s" in one window.  This starts a durus storage server
 using a temporary file and listening for clients on localhost port
-2972.  Run "client.py" in another window.  This connects to the
-storage server on the port 2972 on the localhost.  When you start, you
-have access to only one persistent object, "root". If you make changes
-to attributes of root and run "connection.commit()", the changes are
+2972.  Run "durus -c" in another window.  This connects to the storage
+server on the port 2972 on the localhost.  When you start, you have
+access to only one persistent object, "root". If you make changes to
+attributes of root and run "connection.commit()", the changes are
 written to the (temporary) file.  If you make changes to attributes of
 root, and then run "connection.abort()", the attributes revert back to
 the values they had at the last commit.
 
-Run *another* "client.py" in a third window, and you can see how
-changes in root in the first client are automatically available in the
-second client as soon as there is a commit.
+Run *another* "durus -c" in a third window, and you can see how
+committed changes to root in the first client are available in
+the second client when it starts.  Subsequent changes committed in
+any client are visible in any other client that synchronizes by calling
+either "connection.abort()" or "connection.commit()".
 
-To stop the running durus server, run "run_durus.py --stop".
+To stop the running durus server, run "durus -s --stop".
 
 This demonstrates transactional behavior, but not persistence, since
 the temporary file is removed as soon as the durus server is stopped.
 
 To see how persistence works, do the same thing, except add 
-"--file test.durus" to the run_durus.py command that starts the
-server.  Make changes to attributes of root, run
-"connection.commit()", and "run_durus.py --stop", and the changes to
-root will be stored in test.durus, so that you"ll see the changes
-again if you restart again with the "--file test.durus" option.
+"--file test.durus" to the command that starts the server.  Make
+changes to attributes of root, run "connection.commit()", and
+"durus -s --stop", and the changes to root will be stored in
+test.durus, so that you"ll see the changes again if you restart again
+with the "--file test.durus" option.
 
-Finally, note that you can run "client.py --file test.durus" (after
+Finally, note that you can run "durus -c --file test.durus" (after
 stopping the durus server) to use the file storage directly and
 exclusively.  Everything works the same way as before, except that no
 server is involved.
 
-Both run_durus.py and client.py support "--help" command line options
-that explain more about their usage.
+Both the "durus -s" and "durus -c" commands accept "--help" command
+line options that explain more about their usage.
 
 
 * Using Durus in a Program:
@@ -84,8 +86,8 @@ Example using ClientStorage to open a Connection to a Durus server:
 
 Note that the ClientStorage constructor supports keyword arguments for
 host and port.  If you provide those you should be sure to start the
-storage server the same way.  The "run_durus.py" script supports
-options for host and port, as does the StorageServer constructor.
+storage server the same way.  The "durus -s" command supports options
+for host and port, as does the StorageServer constructor.
 
 The connection instance has a get_root() method that you can use to
 obtain the root object.

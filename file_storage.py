@@ -2,9 +2,8 @@
 """$URL$
 $Id$
 """
-import atexit
 import os
-from tempfile import mkstemp
+import tempfile
 from sets import Set
 from durus.connection import ROOT_OID
 from durus.serialize import split_oids, unpack_record
@@ -23,18 +22,28 @@ MAGIC = "DFS10\0"
 
 if os.name == 'posix':
     import fcntl
-    def lock_file(file):
-        fcntl.flock(file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    def lock_file(fp):
+        fcntl.flock(fp, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    def unlock_file(fp):
+        pass
+    RENAME_OPEN_FILE = True
 elif os.name == 'nt':
     import win32con, win32file, pywintypes # http://sf.net/projects/pywin32/
-    def lock_file(file):
-        win32file.LockFileEx(win32file._get_osfhandle(file.fileno()),
+    def lock_file(fp):
+        win32file.LockFileEx(win32file._get_osfhandle(fp.fileno()),
                              (win32con.LOCKFILE_EXCLUSIVE_LOCK |
                               win32con.LOCKFILE_FAIL_IMMEDIATELY),
                              0, -65536, pywintypes.OVERLAPPED())
+    def unlock_file(fp):
+        win32file.UnlockFileEx(win32file._get_osfhandle(fp.fileno()),
+                               0, -65536, pywintypes.OVERLAPPED())
+    RENAME_OPEN_FILE = False
 else:
-    def lock_file(file):
-        raise RuntimeError("File locking isn't available on your OS.")
+    def lock_file(fp):
+        raise RuntimeError("Sorry, don't know how to lock files on your OS")
+    def unlock_file(fp):
+        pass
+    RENAME_OPEN_FILE = False
 
 if hasattr(os, 'fsync'):
     fsync = os.fsync
@@ -78,10 +87,11 @@ class FileStorage(Storage):
         """
         self.tid = 0
         self.oid = 0
+        self.filename = filename
         if readonly:
-            self.fp = open(filename, 'r')
+            self.fp = open(self.filename, 'r')
         else:
-            self.fp = open(filename, 'a+')
+            self.fp = open(self.filename, 'a+')
             try:
                 lock_file(self.fp)
             except IOError:
@@ -89,7 +99,7 @@ class FileStorage(Storage):
                 raise RuntimeError(
                     "\n  %s is locked."
                     "\n  There is probably a Durus storage server (or a client)"
-                    "\n  using it.\n" % self.fp.name)
+                    "\n  using it.\n" % self.filename)
             if os.fstat(self.fp.fileno()).st_size == 0:
                 self.fp.write(MAGIC)
         self.pending_records = []
@@ -161,6 +171,8 @@ class FileStorage(Storage):
         return p64(self.oid)
 
     def load(self, oid):
+        if self.fp is None:
+            raise IOError, 'storage is closed'
         offset = self.index[oid]
         self.fp.seek(offset)
         size = u32(self.fp.read(4))
@@ -179,6 +191,8 @@ class FileStorage(Storage):
         A FileStorage is the storage of one StorageServer or one
         Connection, so there can never be any invalidations to handle.
         """
+        if self.fp is None:
+            raise IOError, 'storage is closed'
         self.fp.seek(0, 2)
         tid, index = self._write_transaction(self.fp, self.pending_records)
         self.fp.flush()
@@ -212,7 +226,7 @@ class FileStorage(Storage):
         The `prepack_name` is for a copy of the file as it was before
         packing.  The `pack_name` is used to hold the newly packed file.
         """
-        return self.fp.name + '.prepack', self.fp.name + '.pack'
+        return self.filename + '.prepack', self.filename + '.pack'
 
     def pack(self):
         """Perform a pack on the storage.
@@ -220,10 +234,13 @@ class FileStorage(Storage):
         are moved into one big transaction record.
         """
         assert not self.pending_records
+        if self.fp is None:
+            raise IOError, 'storage is closed'
         if self.fp.mode == 'r':
             raise IOError, "read-only storage"
         prepack_name, pack_name = self._get_pack_names()
-        packed = open(pack_name, 'w')
+        packed = open(pack_name, 'w+')
+        lock_file(packed)
         packed.write(MAGIC)
         def generate_records():
             todo = [ROOT_OID]
@@ -239,12 +256,20 @@ class FileStorage(Storage):
                 todo.extend(split_oids(refdata))
                 yield record
         tid, index = self._write_transaction(packed, generate_records())
-        packed.close()
+        packed.flush()
+        fsync(packed)
+        if not RENAME_OPEN_FILE:
+            unlock_file(packed)
+            packed.close()
+        unlock_file(self.fp)
         self.fp.close()
-        file_name = self.fp.name
-        os.rename(file_name, prepack_name)
-        os.rename(packed.name, file_name)
-        self.fp = open(file_name, 'a+')
+        os.rename(self.filename, prepack_name)
+        os.rename(pack_name, self.filename)
+        if RENAME_OPEN_FILE:
+            self.fp = packed
+        else:
+            self.fp = open(self.filename, 'a+')
+            lock_file(self.fp)
         self.index = index
 
     def gen_oid_record(self):
@@ -256,16 +281,29 @@ class FileStorage(Storage):
         for oid in self.index:
             yield oid, self.load(oid)
 
+    def close(self):
+        if self.fp is not None:
+            unlock_file(self.fp)
+            self.fp.close()
+            self.fp = None
+
 
 class TempFileStorage(FileStorage):
 
     def __init__(self):
-        (fd, name) = mkstemp(suffix='.tmp.durus')
+        (fd, name) = tempfile.mkstemp(suffix='.tmp.durus')
         FileStorage.__init__(self, name)
-        def remove_file():
-            os.unlink(self.fp.name)
-        atexit.register(remove_file)
         os.close(fd)
+
+    _unlink = os.unlink
+
+    def close(self):
+        if self.fp is not None:
+            FileStorage.close(self)
+            self._unlink(self.filename)
+
+    def __del__(self):
+        self.close()
 
     def pack(self):
         FileStorage.pack(self)
