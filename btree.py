@@ -5,6 +5,11 @@ $Id$
 from durus.persistent import Persistent
 
 class BNode(Persistent):
+    """
+    Instance attributes:
+      items: list
+      nodes: [BNode]
+    """
 
     minimum_degree = 2 # a.k.a. t
 
@@ -211,7 +216,10 @@ class BNode512(BNode): minimum_degree = 512
 
 
 class BTree(Persistent):
-
+    """
+    Instance attributes:
+      root: BNode
+    """
     def __init__(self, node_constructor=BNode16):
         assert issubclass(node_constructor, BNode)
         self.root = node_constructor()

@@ -25,7 +25,7 @@ else:
         run_durus_main()
     elif arg == '-p':
         from durus.pack_storage import pack_storage_main
-        pack_storage_main()                        
+        pack_storage_main()
     else:
         usage()
 

@@ -1,3 +1,10 @@
+1.4 (2005-1-14) r25851:
+
+    * Revise serialize.py to avoid using cPickle.noload(), which can't handle
+      a dict subclass.
+
+    * Add a --startup option to the durus command line tool.
+
 1.3 (2004-12-10) r25746:
 
     * Use 'b' in file modes.  

@@ -3,6 +3,7 @@ $Id$
 """
 
 import struct
+from sets import Set
 from cPickle import Pickler, Unpickler
 from cStringIO import StringIO
 from durus.error import InvalidObjectReference
@@ -36,20 +37,6 @@ def split_oids(s):
     fmt = '8s' * num
     return list(struct.unpack('>' + fmt, s))
 
-def findrefs(pickle):
-    """(pickle:str) -> str
-    Returns a concatenation of oids referenced in the given pickle.
-    """
-    unpickler = Unpickler(StringIO(pickle))
-    unpickler.noload() # (oid, klass)
-    refs = []
-    def persistent_load(ref):
-        refs.append(ref[0])
-        return ref
-    unpickler.persistent_load = persistent_load
-    unpickler.noload() # state: leaves oids in refs
-    return ''.join(refs)
-
 def extract_class_name(record):
     class_name = record[20:80].split('\n', 2)[1] # assumes pickle protocol 2    
     return class_name
@@ -68,6 +55,7 @@ class ObjectWriter(object):
         self.pickler = Pickler(self.sio, 2)
         self.pickler.persistent_id = self._persistent_id
         self.objects_found = []
+        self.refs = Set() # populated by _persistent_id()
         self.connection = connection
 
     def close(self):
@@ -90,6 +78,7 @@ class ObjectWriter(object):
             self.objects_found.append(obj)
         elif obj._p_connection is not self.connection:
             raise InvalidObjectReference(obj, self.connection)
+        self.refs.add(obj._p_oid)
         return obj._p_oid, type(obj)
 
     def gen_new_objects(self, obj):
@@ -105,10 +94,11 @@ class ObjectWriter(object):
         self.sio.truncate()
         self.pickler.clear_memo()
         self.pickler.dump(type(obj))
+        self.refs.clear()
         self.pickler.dump(obj.__getstate__())
         data = self.sio.getvalue()
-        refs = findrefs(data)
-        return data, refs
+        self.refs.discard(obj._p_oid)
+        return data, ''.join(self.refs)
 
 class ObjectReader(object):
 

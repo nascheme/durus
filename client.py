@@ -26,7 +26,8 @@ def configure_readline(namespace, history_path):
     except ImportError:
         pass
 
-def interactive_client(file, host, port, cache_size, readonly, repair):
+def interactive_client(file, host, port, cache_size, readonly, repair,
+                       startup):
     if file:
         storage = FileStorage(file, readonly=readonly, repair=repair)
         description = file
@@ -45,6 +46,8 @@ def interactive_client(file, host, port, cache_size, readonly, repair):
                  'pp': pprint}
     configure_readline(namespace, os.path.expanduser("~/.durushistory"))
     console = InteractiveConsole(namespace)
+    if startup:
+        console.runsource('execfile("%s")' % os.path.expanduser(startup))
     help = ('    connection -> the connection\n'
             '    root       -> get(0)\n'
             '    get(oid)   -> get an object\n'
@@ -78,9 +81,16 @@ def client_main():
     parser.add_option(
         '--readonly', dest='readonly', action='store_true',
         help='Open the file in read-only mode.')
+    parser.add_option(
+        '--startup', dest='startup',
+        default=os.environ.get('DURUSSTARTUP', ''),
+        help=('Full path to a python startup file to execute on startup.'
+              '(default=DURUSSTARTUP from environment, if set)')
+        )
     (options, args) = parser.parse_args()
     interactive_client(options.file, options.host, options.port,
-                       options.cache_size, options.readonly, options.repair)
+                       options.cache_size, options.readonly, options.repair,
+                       options.startup)
 
 
 if __name__ == '__main__':
