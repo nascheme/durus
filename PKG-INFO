@@ -1,12 +1,11 @@
 Metadata-Version: 1.0
 Name: Durus
-Version: 1.2
+Version: 1.3
 Summary: A Python Object Database
 Home-page: http://www.mems-exchange.org/software/durus/
 Author: CNRI
 Author-email: webmaster@mems-exchange.org
 License: see LICENSE.txt
-Provides: durus-1.2
 Description: 
         Serves and manages changes to persistent objects being used in
         multiple client processes.

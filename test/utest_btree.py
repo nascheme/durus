@@ -5,7 +5,7 @@ $Id$
 """
 
 from random import randint
-from dulcinea.utest import UTest
+from sancho.utest import UTest
 from durus.btree import BTree, BNode
 from durus.connection import Connection
 from durus.file_storage import TempFileStorage
@@ -124,7 +124,7 @@ class SlowTest(UTest):
         print 'bt = BTree()'
         d = {}
         number = 0
-        limit = 100000
+        limit = 10000
         for k in xrange(limit*10):
             number = randint(0, limit)
             if number in bt:
@@ -171,6 +171,6 @@ class DurusTest(UTest):
 if __name__ == '__main__':
     CoverageTest()
     DurusTest()
-    for k in xrange(1000):
+    for k in xrange(2):
         print k,
         SlowTest()

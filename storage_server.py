@@ -152,7 +152,7 @@ class StorageServer:
     def handle_S(self, s):
         # sync
         client = self._find_client(s)
-        log(10, 'Sync %s', len(client.invalid))
+        log(8, 'Sync %s', len(client.invalid))
         tid, invalid = self.storage.sync()
         assert not invalid # should have exclusive access
         s.sendall(tid + p32(len(client.invalid)) + ''.join(client.invalid))

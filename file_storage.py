@@ -89,9 +89,9 @@ class FileStorage(Storage):
         self.oid = 0
         self.filename = filename
         if readonly:
-            self.fp = open(self.filename, 'r')
+            self.fp = open(self.filename, 'rb')
         else:
-            self.fp = open(self.filename, 'a+')
+            self.fp = open(self.filename, 'a+b')
             try:
                 lock_file(self.fp)
             except IOError:
@@ -236,10 +236,10 @@ class FileStorage(Storage):
         assert not self.pending_records
         if self.fp is None:
             raise IOError, 'storage is closed'
-        if self.fp.mode == 'r':
+        if self.fp.mode[0] == 'r':
             raise IOError, "read-only storage"
         prepack_name, pack_name = self._get_pack_names()
-        packed = open(pack_name, 'w+')
+        packed = open(pack_name, 'w+b')
         lock_file(packed)
         packed.write(MAGIC)
         def generate_records():
@@ -268,7 +268,7 @@ class FileStorage(Storage):
         if RENAME_OPEN_FILE:
             self.fp = packed
         else:
-            self.fp = open(self.filename, 'a+')
+            self.fp = open(self.filename, 'a+b')
             lock_file(self.fp)
         self.index = index
 

@@ -15,7 +15,10 @@ class ClientStorage(Storage):
     def __init__(self, port=DEFAULT_PORT, host=DEFAULT_HOST):
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        self.s.connect((host, port))
+        try:
+            self.s.connect((host, port))
+        except socket.error, exc:
+            raise socket.error, "%s:%s %s" % (host, port, exc)
         self.records = []
 
     def new_oid(self):

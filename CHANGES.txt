@@ -1,3 +1,17 @@
+1.3 (2004-12-10) r25746:
+
+    * Use 'b' in file modes.  
+      
+    * Continue to rename the open packed file on POSIX systems.
+
+    * Convert tests to sancho's new utest format.
+
+    * Improve test coverage for FileStorage.
+
+    * Lower the priority of Sync logging.
+    
+    * Show host and port when client fails to connect.
+
 1.2 (2004-09-08) r25044:
 
     * Add durus command line tool.
