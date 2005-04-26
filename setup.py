@@ -1,4 +1,5 @@
-"""$URL$
+"""
+$URL$
 $Id$
 """
 import os
@@ -9,7 +10,7 @@ persistent = Extension(name="durus._persistent",
                        sources=["_persistent.c"])
 
 setup(name = "Durus",
-      version = "1.5",
+      version = "2.0",
       description = "A Python Object Database",
       long_description = """
       Serves and manages changes to persistent objects being used in

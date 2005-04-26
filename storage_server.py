@@ -58,7 +58,7 @@ class StorageServer:
         try:
             sock.bind((self.host, self.port))
         except socket.error, exc:
-            if exc.args[0] == 98:
+            if exc.args[0] == errno.EADDRINUSE:
                 raise RuntimeError(
                     "Port %s on %s is already in use by another process." %
                     (self.port, self.host))

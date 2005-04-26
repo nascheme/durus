@@ -1,5 +1,6 @@
-#!/www/python/bin/python
-"""$URL$
+#!/usr/bin/env python
+"""
+$URL$
 $Id$
 """
 import sys

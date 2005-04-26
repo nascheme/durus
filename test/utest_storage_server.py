@@ -26,6 +26,5 @@ class Test (UTest):
 
 
 if __name__ == "__main__":
-#    options.show_coverage = options.show_coverage_lines = 1
     Test()
 

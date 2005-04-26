@@ -171,7 +171,7 @@ connections.
 
 * Copyright:
 
-Copyright (c) Corporation for National Research Initiatives 2004. All
+Copyright (c) Corporation for National Research Initiatives 2005. All
 Rights Reserved.
 
 

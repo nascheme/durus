@@ -1,3 +1,8 @@
+2.0 (2005-4-26) r26653:
+
+    * The only change is in the license.  The new license is the GPL-compatible
+      version of the CNRI Open Source License.
+
 1.5 (2005-3-07) r26296:
 
     * A small change makes Persistent instances pickle-able.
