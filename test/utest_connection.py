@@ -4,12 +4,13 @@ $Id$
 """
 from durus import run_durus
 from durus.client_storage import ClientStorage
-from durus.connection import Connection, touch_every_reference
+from durus.connection import Connection
 from durus.error import ConflictError
 from durus.file_storage import TempFileStorage
 from durus.persistent import Persistent
 from durus.storage import get_reference_index, get_census
 from durus.storage import gen_referring_oid_record, Storage
+from durus.utils import p64
 from durus.utils import p64
 from popen2 import Popen4
 from sancho.utest import UTest, raises
@@ -99,20 +100,6 @@ class TestConnection (UTest):
         raises(NotImplementedError, s.end)
         raises(NotImplementedError, s.sync)
         raises(NotImplementedError, s.gen_oid_record)
-
-
-    def check_touch_every_reference(self):
-        connection = Connection(self._get_storage())
-        root = connection.get_root()
-        root['a'] = Persistent()
-        root['b'] = Persistent()
-        from durus.persistent_list import PersistentList
-        root['b'].c = PersistentList()
-        connection.commit()
-        touch_every_reference(connection, 'PersistentList')
-        assert root['b']._p_is_unsaved()
-        assert root['b'].c._p_is_unsaved()
-        assert not root._p_is_unsaved()
 
 
 class TestConnectionClientStorage (TestConnection):

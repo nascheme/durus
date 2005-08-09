@@ -1,5 +1,4 @@
-"""
-$URL$
+"""$URL$
 $Id$
 """
 
@@ -62,10 +61,10 @@ class BNode(Persistent):
         position = self.get_position(key)
         if position < len(self.items) and self.items[position][0] == key:
             self.items[position] = item
-            self._p_note_change()
+            self._p_changed = 1
         elif self.is_leaf():
             self.items.insert(position, item)
-            self._p_note_change()
+            self._p_changed = 1
         else:
             child = self.nodes[position]
             if child.is_full():
@@ -93,7 +92,7 @@ class BNode(Persistent):
             assert len(bigger.nodes) == len(child.nodes)
         self.items.insert(position, splitting_key)
         self.nodes.insert(position + 1, bigger)
-        self._p_note_change()
+        self._p_changed = 1
 
     def get_min_item(self):
         """() -> (key:anything, value:anything)
@@ -128,7 +127,7 @@ class BNode(Persistent):
             if matches:
                 # Case 1.
                 del self.items[p]
-                self._p_note_change()
+                self._p_changed = 1
             else:
                 raise KeyError(key)
         else:
@@ -158,7 +157,7 @@ class BNode(Persistent):
                         node.nodes = node.nodes + upper_sibling.nodes
                     del self.items[p]
                     del self.nodes[p + 1]
-                self._p_note_change()
+                self._p_changed = 1
             else:
                 if not is_big(node):
                     if is_big(lower_sibling):
@@ -169,7 +168,7 @@ class BNode(Persistent):
                         if not node.is_leaf():
                             node.nodes.insert(0, lower_sibling.nodes[-1])
                             del lower_sibling.nodes[-1]
-                        lower_sibling._p_note_change()
+                        lower_sibling._p_changed = 1
                     elif is_big(upper_sibling):
                         # Case 3a2: Shift an item from upper_sibling.
                         node.items.append(self.items[p])
@@ -178,7 +177,7 @@ class BNode(Persistent):
                         if not node.is_leaf():
                             node.nodes.append(upper_sibling.nodes[0])
                             del upper_sibling.nodes[0]
-                        upper_sibling._p_note_change()
+                        upper_sibling._p_changed = 1
                     elif lower_sibling:
                         # Case 3b1: Merge with lower_sibling
                         node.items = (lower_sibling.items + [self.items[p-1]] +
@@ -195,8 +194,8 @@ class BNode(Persistent):
                             node.nodes = node.nodes + upper_sibling.nodes
                         del self.items[p]
                         del self.nodes[p+1]
-                    self._p_note_change()
-                    node._p_note_change()
+                    self._p_changed = 1
+                    node._p_changed = 1
                 assert is_big(node)
                 node.delete(key)
             if not self.items:

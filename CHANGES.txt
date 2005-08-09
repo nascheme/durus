@@ -1,9 +1,3 @@
-3.0: (2005-09-??): r27238
-
-    * Fix bug in utility function (touch_every_reference()) added in 3.0a.
-
-    * Replace ._p_changed = 1 to ._p_note_change() in btree.py.
-
 3.0a: (2005-08-??): r27118
 
     * Revise packed record format to write records where the instance state is 

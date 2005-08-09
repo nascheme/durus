@@ -354,12 +354,10 @@ def touch_every_reference(connection, *words):
     so that all references can be updated.
     """
     get = connection.get
-    reader = ObjectReader(connection)
     for oid, record in connection.get_storage().gen_oid_record():
-        record_oid, data, refs = unpack_record(record)
-        state = reader.get_state_pickle(data)
+        record_oid, state, refs = unpack_record(record)
         for word in words:
-            if word in data or word in state:
+            if word in state:
                 get(oid)._p_note_change()
 
 def gen_every_instance(connection, *classes):
