@@ -33,3 +33,4 @@ Neil initiated work on Durus and made it fast.
 Other Contributors:
 
 Andrew Kuchling
+Patrick K. O'Brien

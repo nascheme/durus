@@ -1,3 +1,44 @@
+3.0: (2005-09-??): r27238
+
+    * Fix bug in utility function (touch_every_reference()) added in 3.0a.
+
+    * Replace ._p_changed = 1 to ._p_note_change() in btree.py.
+
+3.0a: (2005-08-??): r27118
+
+    * Revise packed record format to write records where the instance state is 
+      compressed using zlib.  This reduces the size of stored files and the
+      number of bytes of data transmitted during load/store operations.
+
+    * Add a FileStorage2 file format.  The new format does not need or store 
+      transaction identifiers.  It also includes a pre-built index of the 
+      object records written at the time of the last pack.  This results in
+      a faster start-up.  Conversion is not automatic, though.
+      A convert_file_storage.py is included with this release to make it simple
+      to convert a file to either format.
+
+    * Add stress testing client stress.py.
+
+    * When the state of a ghost can't be loaded because it has been
+      removed by a pack (from another connection), make the error be a
+      ReadConflictError instead of a DurusKeyError.
+
+    * Implement an incremental pack.  The storage server can now serve
+      clients while packing the database.
+
+    * Add gen_every_instance() utility to durus.connection.
+
+    * Add touch_every_reference() utility function to durus.connection.
+
+    * Remove the use of tids from Connection, ClientStorage, and
+      StorageServer.  The StorageServer now sends STATUS_INVALID for
+      requests to load object records that are known to be invalid for
+      that client.  Change Storage.load() so that the return value is
+      a tid-less object-record.  The client/server protocol also
+      changes to stop transmitting tids as part of the response for
+      sync and commit requests.  Storage.sync() now returns only a
+      list of oids.  Storage.end() now returns None.
+
 2.0 (2005-4-26) r26653:
 
     * The only change is in the license.  The new license is the GPL-compatible

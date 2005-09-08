@@ -1,4 +1,5 @@
-"""$URL$
+"""
+$URL$
 $Id$
 """
 
@@ -61,10 +62,10 @@ class BNode(Persistent):
         position = self.get_position(key)
         if position < len(self.items) and self.items[position][0] == key:
             self.items[position] = item
-            self._p_changed = 1
+            self._p_note_change()
         elif self.is_leaf():
             self.items.insert(position, item)
-            self._p_changed = 1
+            self._p_note_change()
         else:
             child = self.nodes[position]
             if child.is_full():
@@ -92,7 +93,7 @@ class BNode(Persistent):
             assert len(bigger.nodes) == len(child.nodes)
         self.items.insert(position, splitting_key)
         self.nodes.insert(position + 1, bigger)
-        self._p_changed = 1
+        self._p_note_change()
 
     def get_min_item(self):
         """() -> (key:anything, value:anything)
@@ -127,7 +128,7 @@ class BNode(Persistent):
             if matches:
                 # Case 1.
                 del self.items[p]
-                self._p_changed = 1
+                self._p_note_change()
             else:
                 raise KeyError(key)
         else:
@@ -157,7 +158,7 @@ class BNode(Persistent):
                         node.nodes = node.nodes + upper_sibling.nodes
                     del self.items[p]
                     del self.nodes[p + 1]
-                self._p_changed = 1
+                self._p_note_change()
             else:
                 if not is_big(node):
                     if is_big(lower_sibling):
@@ -168,7 +169,7 @@ class BNode(Persistent):
                         if not node.is_leaf():
                             node.nodes.insert(0, lower_sibling.nodes[-1])
                             del lower_sibling.nodes[-1]
-                        lower_sibling._p_changed = 1
+                        lower_sibling._p_note_change()
                     elif is_big(upper_sibling):
                         # Case 3a2: Shift an item from upper_sibling.
                         node.items.append(self.items[p])
@@ -177,7 +178,7 @@ class BNode(Persistent):
                         if not node.is_leaf():
                             node.nodes.append(upper_sibling.nodes[0])
                             del upper_sibling.nodes[0]
-                        upper_sibling._p_changed = 1
+                        upper_sibling._p_note_change()
                     elif lower_sibling:
                         # Case 3b1: Merge with lower_sibling
                         node.items = (lower_sibling.items + [self.items[p-1]] +
@@ -194,8 +195,8 @@ class BNode(Persistent):
                             node.nodes = node.nodes + upper_sibling.nodes
                         del self.items[p]
                         del self.nodes[p+1]
-                    self._p_changed = 1
-                    node._p_changed = 1
+                    self._p_note_change()
+                    node._p_note_change()
                 assert is_big(node)
                 node.delete(key)
             if not self.items:
@@ -203,6 +204,11 @@ class BNode(Persistent):
                 self.items = self.nodes[0].items
                 self.nodes = self.nodes[0].nodes
 
+    def get_count(self):
+        result = len(self.items)
+        for node in self.nodes or []:
+            result += node.get_count()
+        return result
 
 class BNode2  (BNode): minimum_degree = 2
 class BNode4  (BNode): minimum_degree = 4
@@ -214,12 +220,19 @@ class BNode128(BNode): minimum_degree = 128
 class BNode256(BNode): minimum_degree = 256
 class BNode512(BNode): minimum_degree = 512
 
+# Set narrow specifications of BNode instance attributes.
+for bnode_class in [BNode] + BNode.__subclasses__():
+    bnode_class.items_is = [tuple]
+    bnode_class.nodes_is = (None, [bnode_class])
+del bnode_class
 
 class BTree(Persistent):
     """
     Instance attributes:
       root: BNode
     """
+    root_is = BNode
+
     def __init__(self, node_constructor=BNode16):
         assert issubclass(node_constructor, BNode)
         self.root = node_constructor()
@@ -252,6 +265,9 @@ class BTree(Persistent):
     def __contains__(self, key):
         return self.root.search(key) is not None
 
+    def has_key(self, key):
+        return self.root.search(key) is not None
+
     def __setitem__(self, key, value):
         self.add(key, value)
 
@@ -263,6 +279,9 @@ class BTree(Persistent):
 
     def __delitem__(self, key):
         self.root.delete(key)
+
+    def clear(self):
+        self.root = self.root.__class__()
 
     def get(self, key, default=None):
         """(key:anything, default:anything=None) -> anything
@@ -293,3 +312,8 @@ class BTree(Persistent):
         """() -> (key:anything, value:anything)
         Return the item whose key is maximal."""
         return self.root.get_max_item()
+
+    def get_count(self):
+        """() -> int
+        Compute and return the total number of items."""
+        return self.root.get_count()

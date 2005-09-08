@@ -12,7 +12,7 @@ class Storage(object):
         raise RuntimeError("Storage is abstract")
 
     def load(self, oid):
-        """Return the tid_record for this oid.
+        """Return the record for this oid.
         """
         raise NotImplementedError
 
@@ -22,7 +22,7 @@ class Storage(object):
         """
         raise NotImplementedError
 
-    def store(self, record):
+    def store(self, oid, record):
         """Include this record in the commit underway."""
         raise NotImplementedError
 
@@ -31,9 +31,8 @@ class Storage(object):
         raise NotImplementedError
 
     def sync(self):
-        """-> (tid:long, [oid:str])
-        Return a transaction id and a list of oids of objects that have changes
-        pending since that transaction's commit was initiated.
+        """() -> [oid:str]
+        Return a list of oids that should be invalidated.
         """
         raise NotImplementedError
 
@@ -49,7 +48,7 @@ def gen_referring_oid_record(storage, referred_oid):
     reference to the `referred_oid`.
     """
     for oid, record in storage.gen_oid_record():
-        if referred_oid in split_oids(unpack_record(record[8:])[2]):
+        if referred_oid in split_oids(unpack_record(record)[2]):
             yield oid, record
 
 def gen_oid_class(storage, *classes):
@@ -78,7 +77,7 @@ def get_reference_index(storage):
     """
     result = {}
     for oid, record in storage.gen_oid_record():
-        for ref in split_oids(unpack_record(record[8:])[2]):
+        for ref in split_oids(unpack_record(record)[2]):
             result.setdefault(ref, []).append(oid)
     return result
 

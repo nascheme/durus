@@ -1,14 +1,13 @@
-#!/www/python/bin/python
 """
 $URL$
 $Id$
 """
 from cPickle import dumps, loads
-from sancho.utest import UTest
-from durus.persistent import Persistent
-from durus.file_storage import TempFileStorage
 from durus.connection import Connection
+from durus.file_storage import TempFileStorage
+from durus.persistent import Persistent
 from durus.utils import p64
+from sancho.utest import UTest
 
 
 class Test (UTest):

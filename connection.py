@@ -1,19 +1,19 @@
 """$URL$
 $Id$
 """
-
+from cPickle import loads
+from durus.error import ConflictError, ReadConflictError, DurusKeyError
+from durus.logger import log
+from durus.persistent_dict import PersistentDict
+from durus.serialize import ObjectReader, ObjectWriter
+from durus.serialize import unpack_record, pack_record
+from durus.storage import Storage
+from durus.utils import p64
+from itertools import islice, chain
 from os import getpid
 from sets import Set
 from time import time
 from weakref import ref
-from itertools import islice, chain
-from durus.error import ConflictError, ReadConflictError
-from durus.logger import log
-from durus.persistent_dict import PersistentDict
-from durus.serialize import ObjectReader, ObjectWriter, split_oids, \
-     unpack_record, pack_record
-from durus.storage import Storage
-from durus.utils import p64
 
 ROOT_OID = p64(0)
 
@@ -31,8 +31,6 @@ class Connection(object):
       loaded_oids : Set([str])
          Set of oids of objects that were in the SAVED state at some time
          during the current transaction.
-      tid: str
-         The last tid reported by the storage.
     """
 
     def __init__(self, storage, cache_size=8000):
@@ -43,25 +41,22 @@ class Connection(object):
         """
         assert isinstance(storage, Storage)
         self.storage = storage
-        self.cache = Cache(cache_size)
         self.reader = ObjectReader(self)
         self.changed = {}
         self.invalid_oids = Set()
         self.loaded_oids = Set()
-        self.tid, invalid_oids = self.storage.sync()
         try:
             storage.load(ROOT_OID)
         except KeyError:
-            def new_oid(self):
-                return ROOT_OID
-            self.new_oid = new_oid
             self.storage.begin()
             writer = ObjectWriter(self)
             data, refs = writer.get_state(PersistentDict())
             writer.close()
-            self.storage.store(pack_record(ROOT_OID, data, refs))
-            self.tid = self.storage.end(self._handle_invalidations)
+            self.storage.store(ROOT_OID, pack_record(ROOT_OID, data, refs))
+            self.storage.end(self._handle_invalidations)
         self.new_oid = storage.new_oid # needed by serialize
+        self.cache = Cache(cache_size)
+        self.cache.hold(self.get_root())
 
     def get_storage(self):
         """() -> Storage"""
@@ -94,20 +89,17 @@ class Connection(object):
     def get_stored_pickle(self, oid):
         """(oid:str) -> str
         Retrieve the pickle from storage.  Will raise ReadConflictError if
-        pickle's tid is newer than self.tid and there are invalid objects
-        in the cache.
+        pickle the pickle is invalid.
         """
         if oid in self.invalid_oids:
             # someone is still trying to read after getting a conflict
             raise ReadConflictError([oid])
-        record = self.storage.load(oid)
-        tid = record[:8]
-        record = record[8:]
-        if tid > self.tid:
-            # might need to generate a read conflict.  If none of the
-            # invalid OIDs were loaded by this connection then we are okay.
-            self.tid, invalid_oids = self.storage.sync()
+        try:
+            record = self.storage.load(oid)
+        except ReadConflictError:
+            invalid_oids = self.storage.sync()
             self._handle_invalidations(invalid_oids, read_oid=oid)
+            record = self.storage.load(oid)
         oid2, data, refdata = unpack_record(record)
         assert oid == oid2
         return data
@@ -150,7 +142,13 @@ class Connection(object):
         assert obj._p_is_ghost()
         oid = obj._p_oid
         setstate = obj.__setstate__
-        pickle = self.get_stored_pickle(oid)
+        try:
+            pickle = self.get_stored_pickle(oid)
+        except DurusKeyError:
+            # We have a ghost but cannot find the state for it.  This can
+            # happen if the object was removed from the storage as a result
+            # of packing.
+            raise ReadConflictError([oid])
         state = self.reader.get_state(pickle)
         setstate(state)
 
@@ -177,11 +175,10 @@ class Connection(object):
 
     def _sync(self):
         """
-        Update self.tid and process all invalid_oids so that all non-ghost
-        objects are current up to this tid.
+        Process all invalid_oids so that all non-ghost objects are current.
         """
-        self.tid, invalid_oids = self.storage.sync()
-        self.invalid_oids.update(split_oids(invalid_oids))
+        invalid_oids = self.storage.sync()
+        self.invalid_oids.update(invalid_oids)
         for oid in self.invalid_oids:
             obj = self.cache.get(oid)
             if obj is not None:
@@ -225,12 +222,12 @@ class Connection(object):
                             new_objects[oid] = obj
                             self.cache[oid] = obj
                         data, refs = writer.get_state(obj)
-                        self.storage.store(pack_record(oid, data, refs))
+                        self.storage.store(oid, pack_record(oid, data, refs))
                         obj._p_set_status_saved()
                 finally:
                     writer.close()
             try:
-                self.tid = self.storage.end(self._handle_invalidations)
+                self.storage.end(self._handle_invalidations)
             except ConflictError, exc:
                 for oid, obj in new_objects.iteritems():
                     del self.cache[oid]
@@ -242,13 +239,12 @@ class Connection(object):
             self.changed.clear()
         self.shrink_cache()
 
-    def _handle_invalidations(self, packed_oids, read_oid=None):
-        """(packed_oids:str, read_oid:str=None)
+    def _handle_invalidations(self, oids, read_oid=None):
+        """(oids:[str], read_oid:str=None)
         Check if any of the oids are for objects that were loaded during
         this transaction.  If so, raise the appropriate conflict exception.
         """
-        oids = Set(split_oids(packed_oids))
-        invalid_oids = self.loaded_oids.intersection(oids)
+        invalid_oids = self.loaded_oids.intersection(Set(oids))
         if invalid_oids:
             self.invalid_oids.update(invalid_oids)
             if read_oid is None:
@@ -268,6 +264,14 @@ class Cache(object):
         self.objects = {}
         self.set_size(size)
         self.finger = 0
+        self.held_objects = Set() 
+
+    def hold(self, obj):
+        """
+        Hold a reference to obj so that it will not be removed by
+        the Python garbage collector.
+        """
+        self.held_objects.add(obj)
 
     def get_size(self):
         """Return the target size of the cache."""
@@ -341,3 +345,29 @@ class Cache(object):
             ' loaded %s size %s', getpid(), time() - start_time,
             aged, len(removed), len(ghosts), len(loaded_oids),
             len(self.objects))
+
+
+def touch_every_reference(connection, *words):
+    """(connection:Connection, *words:(str))
+    Mark as changed, every object whose pickled class/state contains any
+    of the given words.  This is useful when you move or rename a class,
+    so that all references can be updated.
+    """
+    get = connection.get
+    reader = ObjectReader(connection)
+    for oid, record in connection.get_storage().gen_oid_record():
+        record_oid, data, refs = unpack_record(record)
+        state = reader.get_state_pickle(data)
+        for word in words:
+            if word in data or word in state:
+                get(oid)._p_note_change()
+
+def gen_every_instance(connection, *classes):
+    """(connection:Connection, *classes:(class)) -> sequence [Persistent]
+    Generate all Persistent instances that are instances of any of the
+    given classes."""
+    for oid, record in connection.get_storage().gen_oid_record():
+        record_oid, state, refs = unpack_record(record)
+        record_class = loads(state)
+        if issubclass(record_class, classes):
+            yield connection.get(oid)

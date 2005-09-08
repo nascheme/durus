@@ -1,12 +1,12 @@
-#!/www/python/bin/python
-"""$URL$
+"""
+$URL$
 $Id$
 """
-import sys, os, cPickle, cStringIO
 from ZODB.FileStorage import FileStorage as ZODBFileStorage
 from ZODB.referencesf import referencesf
-from durus.serialize import pack_record
 from durus.file_storage import FileStorage
+from durus.serialize import pack_record
+import sys, os, cPickle, cStringIO
 
 def convert(zodb_file_name, durus_file_name):
     """Read a ZODB FileStorage and write a new Durus FileStorage."""

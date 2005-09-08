@@ -1,12 +1,11 @@
-#!/www/python/bin/python
 """
 $URL$
 $Id$
 """
+from durus.file_storage import TempFileStorage
+from durus.storage_server import StorageServer, recv
 from random import choice
 from sancho.utest import UTest
-from durus.storage_server import StorageServer, recv
-from durus.file_storage import TempFileStorage
 
 
 class Test (UTest):

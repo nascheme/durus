@@ -1,14 +1,13 @@
-#!/www/python/bin/python
 """
 $URL$
 $Id$
 """
-from sancho.utest import UTest
 from durus.connection import ROOT_OID
 from durus.error import InvalidObjectReference
 from durus.persistent import Persistent
-from durus.serialize import ObjectWriter, ObjectReader, pack_record, \
-     unpack_record, split_oids
+from durus.serialize import ObjectWriter, ObjectReader, pack_record
+from durus.serialize import unpack_record, split_oids
+from sancho.utest import UTest
 
 
 class Test (UTest):

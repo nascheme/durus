@@ -4,11 +4,14 @@ $Id$
 
 import struct
 from sets import Set
-from cPickle import Pickler, Unpickler
+from cPickle import Pickler, Unpickler, loads
 from cStringIO import StringIO
 from durus.error import InvalidObjectReference
 from durus.persistent import Persistent
 from durus.utils import p32, u32
+from zlib import compress, decompress, error as zlib_error
+
+WRITE_COMPRESSED_STATE_PICKLES = True
 
 def pack_record(oid, data, refs):
     """(oid:str, data:str, refs:str) -> record:str
@@ -38,7 +41,8 @@ def split_oids(s):
     return list(struct.unpack('>' + fmt, s))
 
 def extract_class_name(record):
-    class_name = record[20:80].split('\n', 2)[1] # assumes pickle protocol 2    
+    oid, state, refs = unpack_record(record)
+    class_name = state.split('\n', 2)[1]
     return class_name
 
 class ObjectWriter(object):
@@ -95,8 +99,16 @@ class ObjectWriter(object):
         self.pickler.clear_memo()
         self.pickler.dump(type(obj))
         self.refs.clear()
+        position = self.sio.tell()
         self.pickler.dump(obj.__getstate__())
-        data = self.sio.getvalue()
+        uncompressed = self.sio.getvalue()
+        pickled_type = uncompressed[:position]
+        pickled_state = uncompressed[position:]
+        if WRITE_COMPRESSED_STATE_PICKLES:
+            state = compress(pickled_state)
+        else:
+            state = pickled_state
+        data = pickled_type + state
         self.refs.discard(obj._p_oid)
         return data, ''.join(self.refs)
 
@@ -105,7 +117,7 @@ class ObjectReader(object):
     def __init__(self, connection):
         self.connection = connection
 
-    def _get_unpickler(self, pickle):
+    def _get_unpickler(self, file):
         def persistent_load(oid_klass):
             oid, klass = oid_klass
             obj = self.connection.cache_get(oid)
@@ -117,19 +129,36 @@ class ObjectReader(object):
                 obj._p_set_status_ghost()
                 self.connection.cache_set(oid, obj)
             return obj
-        unpickler = Unpickler(StringIO(pickle))
+        unpickler = Unpickler(file)
         unpickler.persistent_load = persistent_load
         return unpickler
 
     def get_ghost(self, data):
-        unpickler = self._get_unpickler(data)
-        klass = unpickler.load()
+        klass = loads(data)
         instance = klass.__new__(klass)
         instance._p_set_status_ghost()
         return instance
 
-    def get_state(self, data):
-        unpickler = self._get_unpickler(data)
+    def get_state(self, data, load=True):
+        s = StringIO()
+        s.write(data)
+        s.seek(0)
+        unpickler = self._get_unpickler(s)
         klass = unpickler.load()
-        state = unpickler.load()
-        return state
+        position = s.tell()
+        if data[s.tell()] == 'x':
+            # This is almost certainly a compressed pickle.
+            try:
+                decompressed = decompress(data[position:])
+            except zlib_error:
+                pass # let the unpickler try anyway.
+            else:
+                s.write(decompressed)
+                s.seek(position)
+        if load:
+            return unpickler.load()
+        else:
+            return s.read()
+
+    def get_state_pickle(self, data):
+        return self.get_state(data, load=False)

@@ -1,14 +1,13 @@
 #!/www/python/bin/python
-#!/www/python/bin/python
 """
 $URL$
 $Id$
 """
-from optparse import OptionParser
-from durus.file_storage import FileStorage
-from durus.storage_server import DEFAULT_PORT, DEFAULT_HOST, wait_for_server
 from durus.client_storage import ClientStorage
 from durus.connection import Connection
+from durus.file_storage import FileStorage
+from durus.storage_server import DEFAULT_PORT, DEFAULT_HOST, wait_for_server
+from optparse import OptionParser
 
 def pack_storage_main():
     parser = OptionParser()

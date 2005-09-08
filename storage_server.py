@@ -1,18 +1,20 @@
-#!/www/python/bin/python
-"""$URL$
+"""
+$URL$
 $Id$
 """
-import socket
-import select
-import errno
-from sets import Set
+from datetime import datetime
 from durus.logger import log, is_logging
-from durus.utils import p32, u32, u64
 from durus.serialize import extract_class_name
+from durus.utils import p32, u32, u64
+from sets import Set
+import errno
+import select
+import socket
 
 
 STATUS_OKAY = 'O'
 STATUS_KEYERROR = 'K'
+STATUS_INVALID = 'I'
 
 TIMEOUT = 10
 DEFAULT_HOST = '127.0.0.1'
@@ -49,6 +51,7 @@ class StorageServer:
         self.storage = storage
         self.clients = []
         self.sockets = []
+        self.packer = None
         self.host = host
         self.port = port
 
@@ -66,7 +69,11 @@ class StorageServer:
         log(20, 'Ready with %s objects', self.storage.get_size())
         self.sockets.append(sock)
         while 1:
-            r, w, e = select.select(self.sockets, [], [])
+            if self.packer is not None:
+                timeout = 0.0
+            else:
+                timeout = None
+            r, w, e = select.select(self.sockets, [], [], timeout)
             for s in r:
                 if s is sock:
                     # new connection
@@ -83,6 +90,12 @@ class StorageServer:
                         log(10, '%s', ''.join(map(str, exc.args)))
                         self.sockets.remove(s)
                         self.clients.remove(self._find_client(s))
+            if self.packer is not None:
+                try:
+                    self.packer.next()
+                except StopIteration:
+                    log(20, 'Pack finished at %s' % datetime.now())
+                    self.packer = None # done packing
 
     def handle(self, s):
         command_code = s.recv(1)
@@ -104,15 +117,18 @@ class StorageServer:
     def handle_L(self, s):
         # load
         oid = recv(s, 8)
-        try:
-            record = self.storage.load(oid)
-        except KeyError:
-            log(10, 'KeyError %s', u64(oid))
-            s.sendall(STATUS_KEYERROR)
+        if oid in self._find_client(s).invalid:
+            s.sendall(STATUS_INVALID)
         else:
-            if is_logging(5):
-                log(5, 'Load %-7s %s', u64(oid), extract_class_name(record))
-            s.sendall(STATUS_OKAY + p32(len(record)) + record)
+            try:
+                record = self.storage.load(oid)
+            except KeyError:
+                log(10, 'KeyError %s', u64(oid))
+                s.sendall(STATUS_KEYERROR)
+            else:
+                if is_logging(5):
+                    log(5, 'Load %-7s %s', u64(oid), extract_class_name(record))
+                s.sendall(STATUS_OKAY + p32(len(record)) + record)
 
     def handle_C(self, s):
         # commit
@@ -131,20 +147,19 @@ class StorageServer:
         while i < len(tdata):
             rlen = u32(tdata[i:i+4])
             i += 4
-            record = tdata[i:i+rlen]
+            oid = tdata[i:i+8]
+            record = tdata[i+8:i+rlen]
             i += rlen
-            oid = record[:8]
             if logging_debug:
-                # extract_class_name() expects a record with a tid.
-                class_name = extract_class_name('faketid:' + record)
+                class_name = extract_class_name(record)
                 log(10, '  oid=%-6s rlen=%-6s %s', u64(oid), rlen, class_name)
-            # storage will add tid
-            self.storage.store(record)
+            self.storage.store(oid, record)
             oids.append(oid)
         assert i == len(tdata)
-        tid = self.storage.end()
-        log(20, 'Committed %3s objects %s bytes', len(oids), tlen)
-        s.sendall(STATUS_OKAY + tid)
+        self.storage.end()
+        log(20, 'Committed %3s objects %s bytes at %s',
+            len(oids), tlen, datetime.now())
+        s.sendall(STATUS_OKAY)
         for c in self.clients:
             if c is not client:
                 c.invalid.update(oids)
@@ -153,15 +168,16 @@ class StorageServer:
         # sync
         client = self._find_client(s)
         log(8, 'Sync %s', len(client.invalid))
-        tid, invalid = self.storage.sync()
+        invalid = self.storage.sync()
         assert not invalid # should have exclusive access
-        s.sendall(tid + p32(len(client.invalid)) + ''.join(client.invalid))
+        s.sendall(p32(len(client.invalid)) + ''.join(client.invalid))
         client.invalid.clear()
 
     def handle_P(self, s):
         # pack
-        log(20, 'Pack')
-        self.storage.pack()
+        log(20, 'Pack started at %s' % datetime.now())
+        if self.packer is None:
+            self.packer = self.storage.get_packer()
         s.sendall(STATUS_OKAY)
 
     def handle_Q(self, s):

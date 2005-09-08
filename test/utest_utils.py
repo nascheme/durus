@@ -1,10 +1,9 @@
-#!/www/python/bin/python
 """
 $URL$
 $Id$
 """
-from sancho.utest import UTest
 from durus.utils import format_oid, u64, p64, u32, p32
+from sancho.utest import UTest
 
 
 class Test (UTest):
@@ -25,4 +24,3 @@ class Test (UTest):
 
 if __name__ == "__main__":
     Test()
-

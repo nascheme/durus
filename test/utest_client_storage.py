@@ -1,16 +1,16 @@
-#!/www/python/bin/python
 """
 $URL$
 $Id$
 """
-from time import sleep
-from popen2 import Popen4
-from sancho.utest import UTest
 from durus import run_durus
 from durus.client_storage import ClientStorage
+from durus.error import ReadConflictError
 from durus.serialize import pack_record
 from durus.utils import p64
-
+from popen2 import Popen4
+from sancho.utest import UTest, raises
+from sets import Set
+from time import sleep
 
 class Test (UTest):
 
@@ -25,6 +25,7 @@ class Test (UTest):
 
     def check_client_storage(self):
         b = ClientStorage(port=self.port)
+        c = ClientStorage(port=self.port)
         assert b.new_oid() == p64(1)
         assert b.new_oid() == p64(2)
         try:
@@ -33,14 +34,20 @@ class Test (UTest):
         except KeyError: pass
         record = pack_record(p64(0), 'ok', '')
         b.begin()
-        b.store(record)
-        b.end()
+        b.store(p64(0), record)
+        assert b.end() is None
         b.load(p64(0))
-        b.sync()
+        assert b.sync() == []
         b.begin()
-        b.store(pack_record(p64(1), 'no', ''))
+        b.store(p64(1), pack_record(p64(1), 'no', ''))
         b.end()
+        assert len(list(b.gen_oid_record())) == 2
         b.pack()
+        assert len(list(b.gen_oid_record())) == 1
+        raises(ReadConflictError, c.load, p64(0))
+        raises(ReadConflictError, c.load, p64(0))
+        assert Set(c.sync()) == Set([p64(0), p64(1)])
+        assert record == c.load(p64(0))
 
 if __name__ == "__main__":
     Test()

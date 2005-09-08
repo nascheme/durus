@@ -1,14 +1,12 @@
-#!/www/python/bin/python
 """
 $URL$
 $Id$
 """
-
-from random import randint
-from sancho.utest import UTest
 from durus.btree import BTree, BNode
 from durus.connection import Connection
 from durus.file_storage import TempFileStorage
+from random import randint
+from sancho.utest import UTest
 
 class CoverageTest(UTest):
 
@@ -116,6 +114,19 @@ class CoverageTest(UTest):
         assert 2 in bt
         assert -1 not in bt
 
+    def has_key(self):
+        bt = BTree()
+        map(bt.add, range(10))
+        assert bt.has_key(2)
+        assert not bt.has_key(-1)
+
+    def clear(self):
+        bt = BTree()
+        map(bt.add, range(10))
+        assert bt.has_key(2)
+        bt.clear()
+        assert not bt.has_key(2)
+        assert bt.keys() == []
 
 class SlowTest(UTest):
 
@@ -146,6 +157,7 @@ class SlowTest(UTest):
                 d_items = d.items()
                 d_items.sort()
                 assert d_items == bt.items()
+                assert len(d_items) == bt.get_count()
 
 class DurusTest(UTest):
 
@@ -171,6 +183,4 @@ class DurusTest(UTest):
 if __name__ == '__main__':
     CoverageTest()
     DurusTest()
-    for k in xrange(2):
-        print k,
-        SlowTest()
+    SlowTest()
