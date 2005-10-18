@@ -3,6 +3,7 @@ $Id$
 """
 
 from durus.serialize import unpack_record, split_oids, extract_class_name
+from durus.utils import p64
 
 class Storage(object):
     """
@@ -26,7 +27,7 @@ class Storage(object):
         """Include this record in the commit underway."""
         raise NotImplementedError
 
-    def end(self):
+    def end(self, handle_invalidations=None):
         """Conclude a commit."""
         raise NotImplementedError
 
@@ -81,3 +82,37 @@ def get_reference_index(storage):
             result.setdefault(ref, []).append(oid)
     return result
 
+
+class MemoryStorage (Storage):
+    """
+    A concrete Storage that keeps everything in memory.
+    This may be useful for testing purposes.
+    """
+    def __init__(self):
+        self.records = {}
+        self.transaction = None
+        self.oid = 0
+
+    def new_oid(self):
+        self.oid += 1
+        return p64(self.oid)
+
+    def load(self, oid):
+        return self.records[oid]
+
+    def begin(self):
+        self.transaction = {}
+
+    def store(self, oid, record):
+        self.transaction[oid] = record
+
+    def end(self, handle_invalidations=None):
+        self.records.update(self.transaction)
+        self.transaction = None
+
+    def sync(self):
+        return []
+
+    def gen_oid_record(self):
+        for oid, record in self.records.iteritems():
+            yield oid, record

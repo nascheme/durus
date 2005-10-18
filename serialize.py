@@ -139,7 +139,7 @@ class ObjectReader(object):
         instance._p_set_status_ghost()
         return instance
 
-    def get_state(self, data):
+    def get_state(self, data, load=True):
         s = StringIO()
         s.write(data)
         s.seek(0)
@@ -155,4 +155,10 @@ class ObjectReader(object):
             else:
                 s.write(decompressed)
                 s.seek(position)
-        return unpickler.load()
+        if load:
+            return unpickler.load()
+        else:
+            return s.read()
+
+    def get_state_pickle(self, data):
+        return self.get_state(data, load=False)

@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="us-ascii" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=us-ascii" />
+<meta name="generator" content="Docutils 0.3.0: http://docutils.sourceforge.net/" />
+<title>Frequently Asked Questions about Durus</title>
+<link rel="stylesheet" href="default.css" type="text/css" />
+</head>
+<body>
+<div class="document" id="frequently-asked-questions-about-durus">
+<h1 class="title">Frequently Asked Questions about Durus</h1>
+<dl>
+<dt>Q:</dt>
+<dd>For what sorts of applications is Durus best suited?</dd>
+<dt>A:</dt>
+<dd>Durus aggressively caches data and does not do locking.  As a result
+it performs very well for applications do mostly reading and only a
+little writing.</dd>
+<dt>Q:</dt>
+<dd>Why did was Durus developed when ZODB and ZEO already existed?</dd>
+<dt>A:</dt>
+<dd><p class="first">The initial motivation mostly that we wanted to use new-style
+classes instead of ExtensionClasses.  Durus does not have as many
+features as ZODB (multi-threaded access, multiple storage backends,
+asynchronous IO, versions, undo, conflict resolution).  That all
+adds up to making the code much simpler.</p>
+<p>Recent releases of ZODB now use new-style classes too.  So, if you
+need extra features or multi-threading then ZODB is still the way to
+go.  We like Durus because it does what we need and it is simple
+enough that we can understand it in its entirety.</p>
+<p class="last">The programming interface is nearly the same as ZODB (Durus is
+heavily influenced by the ZODB design).  Speed is pretty similar
+although Durus may be a little faster.</p>
+</dd>
+<dt>Q:</dt>
+<dd>How would you handle an application which has frequent concurrent
+writes to the same object?  Durus is generating lots of write
+conflicts.</dd>
+<dt>A:</dt>
+<dd>If your application does a lot of writing then Durus may not be the
+appropriate database.  That said, there are some ways to mitigate
+write conflicts.  Try to avoid designs that require frequent writes
+to the same objects.  Also, try to keep transactions short (i.e.
+the time between <tt class="literal"><span class="pre">abort()</span></tt>/<tt class="literal"><span class="pre">commit()</span></tt> and <tt class="literal"><span class="pre">commit()</span></tt>).</dd>
+<dt>Q:</dt>
+<dd>I made a change in one client but it is not visible in another
+client.</dd>
+<dt>A:</dt>
+<dd>You need to call <tt class="literal"><span class="pre">commit()</span></tt> or <tt class="literal"><span class="pre">abort()</span></tt> in the second client in
+order to see the new data.  This behavior is necessary to provide
+data consistency.  Between transaction boundaries clients must see a
+consistent view of the data.  This necessarily means that they may
+be seeing out-of-date data.</dd>
+<dt>Q:</dt>
+<dd>When does a write conflict occur?</dd>
+<dt>A:</dt>
+<dd>If a client makes changes based on out-of-date data and tries to commit
+then a <tt class="literal"><span class="pre">ConflictError</span></tt> exception will be raised.  This occurs when
+some other client has committed a change during the first client's
+transaction (i.e. between <tt class="literal"><span class="pre">commit()</span></tt>/<tt class="literal"><span class="pre">abort()</span></tt> and <tt class="literal"><span class="pre">commit()</span></tt>).</dd>
+<dt>Q:</dt>
+<dd>When does a read conflict occur?</dd>
+<dt>A:</dt>
+<dd><p class="first">The exact conditions under which a <tt class="literal"><span class="pre">ReadConflictError</span></tt> is raised
+are complicated so the source code is probably the best reference.
+In essence, a read conflict occurs when a client tries to load data
+from the storage server that is inconsistent with data that it has
+previously loaded.  For example, a client loads object A, a second
+client modifies object A and object B.  If the first client tries to
+load object B it will get a read conflict error.  The state of
+object A, already in loaded, is not consistent with the state of B.</p>
+<p class="last">Multi-version concurrency control (MVCC) can avoid read conflicts.
+When MVCC is used, an older version of the object's state is
+returned to the client (a version consistent with the other objects
+that the client loaded).  Durus does not implement MVCC.  Recent
+versions of the Zope Object Database (ZODB) do.</p>
+</dd>
+<dt>Q:</dt>
+<dd>My client has received a <tt class="literal"><span class="pre">ConflictError</span></tt> or <tt class="literal"><span class="pre">ReadConflictError</span></tt>.
+What must it do to recover?</dd>
+<dt>A:</dt>
+<dd>The client must call <tt class="literal"><span class="pre">abort()</span></tt> and restart the transaction.  Note
+that it must not keep partial results in local variables, for
+example, since the data it was using before the conflict was out of
+date.</dd>
+<dt>Q:</dt>
+<dd>I've made changes to my object model.  How do I update an existing
+database?</dd>
+<dt>A:</dt>
+<dd>We have found that a separate database update script works well.
+Using <tt class="literal"><span class="pre">__getstate__</span></tt> and <tt class="literal"><span class="pre">__setstate__</span></tt> is not recommended.</dd>
+<dt>Q:</dt>
+<dd>I need to find all objects of a certain class in order to update
+their attributes.</dd>
+<dt>A:</dt>
+<dd>If you can't easily find them by following the object graph then you
+can use the <tt class="literal"><span class="pre">gen_oid_class()</span></tt> function from the <tt class="literal"><span class="pre">storage</span></tt>
+module.  Note that this is expensive since it iterates over every
+record in the database.  We use it only for making data model
+changes.</dd>
+<dt>Q:</dt>
+<dd>I want to rename a class.  How do I update the database?</dd>
+<dt>A:</dt>
+<dd>First, make sure the class can be accessed via the old name (e.g.
+<tt class="literal"><span class="pre">OldClass</span> <span class="pre">=</span> <span class="pre">NewClass</span></tt>).  In your update DB script, set the
+<tt class="literal"><span class="pre">_p_changed</span></tt> flag on all instances of the class and then call
+<tt class="literal"><span class="pre">commit()</span></tt>.  You can now remove the old name.</dd>
+<dt>Q:</dt>
+<dd>I want to rename a module.  How do I update the database?</dd>
+<dt>A:</dt>
+<dd><p class="first">This is basically the same as changing a class name.  A useful trick
+is to assign to <tt class="literal"><span class="pre">sys.modules</span></tt> directly.  For example, in your update
+DB script you could do something like:</p>
+<pre class="last literal-block">
+import newmodule
+sys.modules[&quot;oldmodule&quot;] = newmodule
+</pre>
+</dd>
+<dt>Q:</dt>
+<dd>How do I backup a database?  Do I need to shutdown the storage
+server first?</dd>
+<dt>A:</dt>
+<dd>It is safe to just copy the file.  Data is only appended to the file
+and the FileStorage class can detect if the last transaction has
+been truncated.  There is no need to shutdown the storage server
+first.</dd>
+</dl>
+</div>
+</body>
+</html>

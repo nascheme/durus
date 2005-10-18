@@ -1,4 +1,17 @@
-3.0a: (2005-08-??): r27118
+3.1: (2005-10-18): r27556
+
+    * Add PersistentSet.  (Applications that use the persistent_set
+      must use Python versions >= 2.4).
+
+    * Add MemoryStorage, an in-memory storage for testing purposes.
+
+3.0: (2005-09-08): r27334
+
+    * Fix bug in utility function (touch_every_reference()) added in 3.0a.
+
+    * Replace ._p_changed = 1 to ._p_note_change() in btree.py.
+
+3.0a: (2005-08-09): r27118
 
     * Revise packed record format to write records where the instance state is 
       compressed using zlib.  This reduces the size of stored files and the

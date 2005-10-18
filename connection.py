@@ -300,17 +300,6 @@ class Cache(object):
         del self.objects[key]
 
     def shrink(self, loaded_oids):
-        if 0:
-            # debugging code, ensure loaded_oids is sane
-            for oid, r in self.objects.iteritems():
-                obj = r()
-                if obj is not None and obj._p_is_saved():
-                    # every SAVED object must be in loaded_oids
-                    assert oid in loaded_oids, obj._p_format_oid()
-            for oid in loaded_oids:
-                # every oid in loaded_oids must have an entry in the cache
-                assert oid in self.objects
-
         size = len(self.objects)
         assert len(loaded_oids) <= size
         extra = size - self.size
@@ -354,10 +343,12 @@ def touch_every_reference(connection, *words):
     so that all references can be updated.
     """
     get = connection.get
+    reader = ObjectReader(connection)
     for oid, record in connection.get_storage().gen_oid_record():
-        record_oid, state, refs = unpack_record(record)
+        record_oid, data, refs = unpack_record(record)
+        state = reader.get_state_pickle(data)
         for word in words:
-            if word in state:
+            if word in data or word in state:
                 get(oid)._p_note_change()
 
 def gen_every_instance(connection, *classes):
