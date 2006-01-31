@@ -33,6 +33,44 @@ class BNode(Persistent):
             for it in self.nodes[-1]:
                 yield it
 
+    def __reversed__(self):
+        if self.is_leaf():
+            for item in reversed(self.items):
+                yield item
+        else:
+            for item in reversed(self.nodes[-1]):
+                yield item
+            for position in range(len(self.items) - 1, -1, -1):
+                yield self.items[position]
+                for item in reversed(self.nodes[position]):
+                    yield item
+
+    def iter_from(self, key):
+        position = self.get_position(key)
+        if self.is_leaf():
+            for item in self.items[position:]:
+                yield item
+        else:
+            for item in self.nodes[position].iter_from(key):
+                yield item
+            for p in range(position, len(self.items)):
+                yield self.items[p]
+                for item in self.nodes[p + 1]:
+                    yield item
+
+    def iter_backward_from(self, key):
+        position = self.get_position(key)
+        if self.is_leaf():
+            for item in reversed(self.items[:position]):
+                yield item
+        else:
+            for item in self.nodes[position].iter_backward_from(key):
+                yield item
+            for p in range(position - 1, -1, -1):
+                yield self.items[p]
+                for item in reversed(self.nodes[p]):
+                    yield item
+
     def is_full(self):
         return len(self.items) == 2 * self.minimum_degree - 1
 
@@ -237,6 +275,9 @@ class BTree(Persistent):
         assert issubclass(node_constructor, BNode)
         self.root = node_constructor()
 
+    def __nonzero__(self):
+        return bool(self.root.items)
+
     def iteritems(self):
         for item in self.root:
             yield item
@@ -262,6 +303,10 @@ class BTree(Persistent):
         for key in self.iterkeys():
             yield key
 
+    def __reversed__(self):
+        for item in reversed(self.root):
+            yield item[0]
+
     def __contains__(self, key):
         return self.root.search(key) is not None
 
@@ -270,6 +315,13 @@ class BTree(Persistent):
 
     def __setitem__(self, key, value):
         self.add(key, value)
+
+    def setdefault(self, key, value):
+        item = self.root.search(key)
+        if item is None:
+            self.add(key, value)
+            return value
+        return item[1]
 
     def __getitem__(self, key):
         item = self.root.search(key)
@@ -306,14 +358,58 @@ class BTree(Persistent):
     def get_min_item(self):
         """() -> (key:anything, value:anything)
         Return the item whose key is minimal."""
+        assert self, 'empty BTree has no min item'
         return self.root.get_min_item()
 
     def get_max_item(self):
         """() -> (key:anything, value:anything)
         Return the item whose key is maximal."""
+        assert self, 'empty BTree has no max item'
         return self.root.get_max_item()
 
-    def get_count(self):
+    def __len__(self):
         """() -> int
         Compute and return the total number of items."""
         return self.root.get_count()
+
+    def items_backward(self):
+        """() -> generator 
+        Generate all items in reverse order.
+        """
+        for item in reversed(self.root):
+            yield item
+
+    def items_from(self, key):
+        """() -> generator
+        Generate all items with keys greater than or equal to the given key.
+        """
+        for item in self.root.iter_from(key):
+            yield item
+
+    def items_backward_from(self, key):
+        """() -> generator
+        Generate in reverse order all items with keys less than the given key.
+        """
+        for item in self.root.iter_backward_from(key):
+            yield item
+
+    def items_range(self, start, end):
+        """() -> generator
+        Generate items with keys from start (inclusive) to end (exclusive).
+        The items are generated in the same order as start and end.
+        """
+        if start <= end:
+            for item in self.items_from(start):
+                if item[0] >= end:
+                    break
+                yield item
+        else:
+            item_at_start =  item = self.root.search(start)
+            if item_at_start is not None:
+                yield item_at_start
+            for item in self.items_backward_from(start):
+                if item[0] <= end:
+                    break
+                yield item
+
+

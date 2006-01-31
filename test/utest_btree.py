@@ -6,7 +6,7 @@ from durus.btree import BTree, BNode
 from durus.connection import Connection
 from durus.file_storage import TempFileStorage
 from random import randint
-from sancho.utest import UTest
+from sancho.utest import UTest, raises
 
 class CoverageTest(UTest):
 
@@ -70,8 +70,27 @@ class CoverageTest(UTest):
         bt = self._delete_case_3()
         del bt[7]
 
+    def nonzero(self):
+        bt = BTree()
+        assert not bt
+        bt['1'] = 1
+        assert bt
+
+    def setdefault(self):
+        bt = BTree()
+        assert bt.setdefault('1', []) == []
+        assert bt['1'] == []
+        bt.setdefault('1', 1).append(1)
+        assert bt['1'] == [1]
+        bt.setdefault('1', [])
+        assert bt['1'] == [1]
+        bt.setdefault('1', 1).append(2)
+        assert bt['1'] == [1, 2]
+
     def find_extremes(self):
         bt = BTree()
+        assert raises(AssertionError, bt.get_min_item)
+        assert raises(AssertionError, bt.get_max_item)
         map(bt.add, range(100))
         assert bt.get_min_item() == (0, True)
         assert bt.get_max_item() == (99, True)
@@ -84,6 +103,47 @@ class CoverageTest(UTest):
         assert list(bt.iterkeys()) == bt.keys()
         assert list(bt.itervalues()) == bt.values()
         assert list(bt.iteritems()) == bt.items()
+
+    def reversed(self):
+        bt = BTree()
+        map(bt.add, range(100))
+        assert list(reversed(bt)) == list(reversed(list(bt)))
+
+    def items_backward(self):
+        bt = BTree()
+        map(bt.add, range(100))
+        assert list(reversed(bt.items())) == list(bt.items_backward())
+
+    def items_from(self):
+        bt = BTree()
+        map(bt.add, range(100))
+        for cutoff in (-1, 1, 50.1, 100, 102):
+            assert (list([(x, y) for (x, y) in bt.items() if x >= cutoff]) ==
+                    list(bt.items_from(cutoff)))
+
+    def items_backward_from(self):
+        bt = BTree()
+        map(bt.add, range(100))
+        for cutoff in (-1, 1, 50.1, 100, 102):
+            expect = list(reversed([(x, y) for (x, y) in bt.items()
+                                    if x < cutoff]))
+            got = list(bt.items_backward_from(cutoff))
+            assert expect == got, (cutoff, expect, got)
+
+    def items_range(self):
+        bt = BTree()
+        map(bt.add, range(100))
+        lo = 0
+        hi = 40
+        for lo, hi in [(-1,10), (3, 9), (30, 200), (-10, 200)]:
+            expect = list([(x, y) for (x, y) in bt.items()
+                        if lo <= x < hi])
+            got = list(bt.items_range(lo, hi))
+            assert expect == got, (lo, hi, expect, got)
+            expect = list(reversed([(x, y) for (x, y) in bt.items()
+                        if lo < x <= hi]))
+            got = list(bt.items_range(hi, lo))
+            assert expect == got, (hi, lo, expect, got)
 
     def search(self):
         bt = BTree(BNode)
@@ -157,7 +217,7 @@ class SlowTest(UTest):
                 d_items = d.items()
                 d_items.sort()
                 assert d_items == bt.items()
-                assert len(d_items) == bt.get_count()
+                assert len(d_items) == len(bt)
 
 class DurusTest(UTest):
 

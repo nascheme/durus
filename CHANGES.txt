@@ -1,3 +1,20 @@
+3.2: (2006-02-01): r27892
+
+    * Add 5 iteration methods to BTree.
+      __reversed__() for reverse iteration of keys.
+      items_backward() for reverse iteration of items.
+      items_from() for iterations starting at a given key.
+      items_backward_from() for reverse iterations from a given key.
+      items_range() for iterations of items with keys in a given range.
+
+    * Add __nonzero__ and setdefault methods to BTree
+
+    * Change the name of BTree's get_count method to __len__.
+
+    * Add setuptools support (when installed) to setup.py.
+
+    * Remove convert_zodb.py script, rather than fix/maintain it.
+
 3.1: (2005-10-18): r27556
 
     * Add PersistentSet.  (Applications that use the persistent_set
