@@ -122,10 +122,16 @@ def main():
                       help='Port to listen on. (default=%s)' % DEFAULT_PORT)
     parser.add_option('--host', dest='host', default=DEFAULT_HOST,
                       help='Host to listen on. (default=%s)' % DEFAULT_HOST)
+    parser.add_option('--cache_size', dest="cache_size", default=4000,
+                      type="int",
+                      help="Size of client cache (default=4000)")
+    parser.add_option('--max-loops', dest='loops', default=None, type='int',
+                      help='Maximum number of loops before exiting.')
+
     (options, args) = parser.parse_args()
 
     storage = ClientStorage(host=options.host, port=options.port)
-    connection = Connection(storage)
+    connection = Connection(storage, cache_size=options.cache_size)
     try:
         if 'obj' not in connection.get_root():
             init_db(connection)
@@ -133,7 +139,10 @@ def main():
             connection.commit()
     except ConflictError:
         connection.abort()
-    while True:
+    n = options.loops
+    while n is None or n > 0:
+        if n is not None:
+            n -= 1
         try:
             if randbool():
                 connection.abort()
@@ -142,6 +151,7 @@ def main():
             connection.commit()
             maybe_sleep()
         except ConflictError:
+            print 'conflict'
             connection.abort()
             maybe_sleep()
 

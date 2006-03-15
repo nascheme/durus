@@ -4,7 +4,7 @@ $Id$
 """
 from sancho.utest import UTest
 from durus.file_storage import TempFileStorage, FileStorage
-from durus.file_storage import FileStorage1
+from durus.file_storage import FileStorage1, FileStorage2
 from durus.serialize import pack_record
 from durus.utils import p64
 
@@ -40,13 +40,13 @@ class Test (UTest):
             c = FileStorage(b.get_filename(), readonly=True)
             try:
                 c.pack()
-                assert 0 
+                assert 0
             except IOError: # read-only storage
                 pass
         b.close()
         try:
             b.pack()
-            assert 0 
+            assert 0
         except IOError: # storage closed
             pass
         try:
@@ -54,6 +54,13 @@ class Test (UTest):
             assert 0
         except IOError: # storage closed
             pass
+
+    def check_reopen(self):
+        f = TempFileStorage()
+        filename = f.fp.name
+        g = FileStorage(filename, readonly=True)
+        h = FileStorage2(filename, readonly=True)
+
 
 
 if __name__ == "__main__":

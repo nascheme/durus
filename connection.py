@@ -258,13 +258,23 @@ class Connection(object):
         self.storage.pack()
 
 
+class _Ref(ref):
+    __slots__ = ['_obj']
+
+    def make_strong(self):
+        self._obj = self()
+
+    def make_weak(self):
+        self._obj = None
+
+
 class Cache(object):
 
     def __init__(self, size):
         self.objects = {}
         self.set_size(size)
         self.finger = 0
-        self.held_objects = Set() 
+        self.held_objects = Set()
 
     def hold(self, obj):
         """
@@ -294,7 +304,9 @@ class Cache(object):
             return weak_reference()
 
     def __setitem__(self, key, obj):
-        self.objects[key] = ref(obj)
+        self.objects[key] = weak_reference = _Ref(obj)
+        # we want a strong reference until we decide to strink the cache
+        weak_reference.make_strong()
 
     def __delitem__(self, key):
         del self.objects[key]
@@ -320,11 +332,14 @@ class Cache(object):
             if obj is None:
                 removed.add(oid)
             elif obj._p_touched:
+                weak_reference.make_strong()
                 obj._p_touched = 0
                 aged += 1
-            elif obj._p_is_saved():
-                obj._p_set_status_ghost()
-                ghosts.add(oid)
+            else:
+                weak_reference.make_weak()
+                if obj._p_is_saved():
+                    obj._p_set_status_ghost()
+                    ghosts.add(oid)
         for oid in removed:
             del self.objects[oid]
         loaded_oids -= removed

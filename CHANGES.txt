@@ -1,3 +1,29 @@
+3.3: (2006-03-15): 28065
+
+    * Keep strong references to objects until we decide that they haven't 
+      been recently touched.  This limits the impact of the Python
+      garbage collector.
+
+    * Change the FileStorage class as needed to agree with the magic 
+      header string found in an existing file.  Do this no matter which
+      of the constructors (FileStorage, FileStorage1, or FileStorage2)
+      is called to create the instance.  Before this change, opening an
+      an existing file with the FileStorage2 constructor (instead of
+      the generic FileStorage constructor), raised an exception.
+
+    * Adjust logging.
+      
+      Before this change, the server logs the class of each object
+      when it is loaded if the logginglevel is at level 5 or below.
+      This changes that threshhold to level 4.
+
+      Now, when the logging level is 5 or below, the server prints
+      a census of objects loaded since the last commit or abort.
+      This can make it easier to understand patterns of cache misses.
+      
+    * Add dummy new_oid() and get_packer() methods to the Storage class
+      for documentation.
+          
 3.2: (2006-02-01): r27892
 
     * Add 5 iteration methods to BTree.

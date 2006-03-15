@@ -106,12 +106,11 @@ class FileStorage(Storage):
         If the underlying file is empty, this writes the magic
         string into the file.
         """
-        if self.__class__ is FileStorage:
-            for format in (FileStorage1, FileStorage2):
-                self.fp.seek(0)
-                self.__class__ = format
-                if format.MAGIC == self.fp.read(len(format.MAGIC)):
-                    return
+        for format in (FileStorage1, FileStorage2):
+            self.fp.seek(0)
+            self.__class__ = format
+            if format.MAGIC == self.fp.read(len(format.MAGIC)):
+                return
         # Write header for new FileStorage2 file.
         self.fp.seek(0, 2)
         if self.fp.tell() != 0:
@@ -254,7 +253,7 @@ class FileStorage(Storage):
     def get_packer(self):
         """Return an incremental packer (a generator).  Each time next() is
         called, up to _PACK_INCREMENT records will be packed.  Note that the
-        generator must be exhaused before calling get_packer() again.
+        generator must be exhausted before calling get_packer() again.
         """
         if self.fp is None:
             raise IOError, 'storage is closed'

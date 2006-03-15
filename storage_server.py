@@ -54,6 +54,7 @@ class StorageServer:
         self.packer = None
         self.host = host
         self.port = port
+        self.load_record = {}
 
     def serve(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -127,7 +128,12 @@ class StorageServer:
                 s.sendall(STATUS_KEYERROR)
             else:
                 if is_logging(5):
-                    log(5, 'Load %-7s %s', u64(oid), extract_class_name(record))
+                    class_name = extract_class_name(record)
+                    if class_name in self.load_record:
+                        self.load_record[class_name] += 1
+                    else:
+                        self.load_record[class_name] = 1
+                    log(4, 'Load %-7s %s', u64(oid), class_name)
                 s.sendall(STATUS_OKAY + p32(len(record)) + record)
 
     def handle_C(self, s):
@@ -157,6 +163,7 @@ class StorageServer:
             oids.append(oid)
         assert i == len(tdata)
         self.storage.end()
+        self._report_load_record()
         log(20, 'Committed %3s objects %s bytes at %s',
             len(oids), tlen, datetime.now())
         s.sendall(STATUS_OKAY)
@@ -164,9 +171,17 @@ class StorageServer:
             if c is not client:
                 c.invalid.update(oids)
 
+    def _report_load_record(self):
+        if self.load_record and is_logging(5):
+            log(5, '\n'.join(
+                 "%8s: %s" % (item[1], item[0])
+                 for item in sorted(self.load_record.items())))
+            self.load_record.clear()
+
     def handle_S(self, s):
         # sync
         client = self._find_client(s)
+        self._report_load_record()
         log(8, 'Sync %s', len(client.invalid))
         invalid = self.storage.sync()
         assert not invalid # should have exclusive access

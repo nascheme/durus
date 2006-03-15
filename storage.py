@@ -42,6 +42,20 @@ class Storage(object):
         """
         raise NotImplementedError
 
+    def new_oid(self):
+        """() -> oid:str
+        Return an unused oid.  Used by Connection for serializing new persistent
+        instances.
+        """
+        raise NotImplementedError
+
+    def get_packer(self):
+        """
+        Return an incremental packer (a generator).
+        Used by StorageServer.
+        """
+        raise NotImplementedError
+
 
 def gen_referring_oid_record(storage, referred_oid):
     """(storage:Storage, referred_oid:str) -> sequence([oid:str, record:str])

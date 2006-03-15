@@ -70,9 +70,8 @@ def client_main():
         '--host', dest="host", default=DEFAULT_HOST,
         help="Host of the server. (default=%s)" % DEFAULT_HOST)
     parser.add_option(
-        '--cache_size', dest="cache_size", default=10000,
-        type="int",
-        help="Host of the server. (default=0, no limit)")
+        '--cache_size', dest="cache_size", default=10000, type="int",
+        help="Size of client cache (default=10000)")
     parser.add_option(
         '--repair', dest='repair', action='store_true',
         help=('Repair the filestorage by truncating to remove anything '
