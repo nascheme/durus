@@ -103,7 +103,6 @@ pb_getattro(PersistentBaseObject *self, PyObject *name)
 		}
 		connection = self->p_connection;
 		if (connection != Py_None) {
-			Py_DECREF(self->p_touched);
 			self->p_touched = ((ConnectionBaseObject*)connection)->sync_count;
 			Py_INCREF(self->p_touched);
 		} 

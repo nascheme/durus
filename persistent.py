@@ -60,8 +60,8 @@ except ImportError:
             GHOST   -> UNSAVED
               this happens when you want to make changes to self.__dict__.
               The stored state is loaded during this state transition.
-          _p_touched: int
-            set on every access to _p_connection.sync_count
+          _p_touched: float
+            set on every access to _p_connection.sync_time
             (if _p_connection is not None).
           _p_connection: durus.connection.Connection | None
             The Connection to the Storage that stores this instance.
@@ -76,7 +76,7 @@ except ImportError:
         def __new__(klass, *args, **kwargs):
             instance = object.__new__(klass, *args, **kwargs)
             instance._p_status = UNSAVED
-            instance._p_touched = 0
+            instance._p_touched = 0.0
             instance._p_connection = None
             instance._p_oid = None
             return instance
