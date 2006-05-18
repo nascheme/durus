@@ -5,6 +5,7 @@ $Id$
 """
 import sys
 import os
+import new
 from code import InteractiveConsole
 from durus.utils import p64, u64
 from durus.file_storage import FileStorage
@@ -27,16 +28,18 @@ def configure_readline(namespace, history_path):
     except ImportError:
         pass
 
-def interactive_client(file, host, port, cache_size, readonly, repair,
+def interactive_client(file, address, cache_size, readonly, repair,
                        startup):
     if file:
         storage = FileStorage(file, readonly=readonly, repair=repair)
         description = file
     else:
-        wait_for_server(host, port)
-        storage = ClientStorage(host=host, port=port)
-        description = "%s:%s" % (host, port)
+        wait_for_server(address=address)
+        storage = ClientStorage(address=address)
+        description = repr(address)
     connection = Connection(storage, cache_size=cache_size)
+    console_module = new.module('__console__')
+    sys.modules['__console__'] = console_module
     namespace = {'connection': connection,
                  'root': connection.get(0),
                  'get': connection.get,
@@ -45,15 +48,17 @@ def interactive_client(file, host, port, cache_size, readonly, repair,
                  'p64': p64,
                  'u64': u64,
                  'pp': pprint}
-    configure_readline(namespace, os.path.expanduser("~/.durushistory"))
-    console = InteractiveConsole(namespace)
+    vars(console_module).update(namespace)
+    configure_readline(
+        vars(console_module), os.path.expanduser("~/.durushistory"))
+    console = InteractiveConsole(vars(console_module))
     if startup:
         console.runsource('execfile("%s")' % os.path.expanduser(startup))
     help = ('    connection -> the connection\n'
             '    root       -> get(0)\n'
             '    get(oid)   -> get an object\n'
             '    pp(object) -> pretty-print')
-    console.interact('Durus (%s)\n%s' % (description, help))
+    console.interact('Durus %s\n%s' % (description, help))
 
 def client_main():
     from optparse import OptionParser
@@ -69,6 +74,12 @@ def client_main():
     parser.add_option(
         '--host', dest="host", default=DEFAULT_HOST,
         help="Host of the server. (default=%s)" % DEFAULT_HOST)
+    parser.add_option(
+        '--address', dest="address", default=None,
+        help=(
+            "Address of the server. (default=%s)\n"
+            "If given, this is the path to a Unix domain socket for "
+            "the server."))
     parser.add_option(
         '--cache_size', dest="cache_size", default=10000, type="int",
         help="Size of client cache (default=10000)")
@@ -88,7 +99,11 @@ def client_main():
               '(default=DURUSSTARTUP from environment, if set)')
         )
     (options, args) = parser.parse_args()
-    interactive_client(options.file, options.host, options.port,
+    if options.address is None:
+        address = (options.host, options.port)
+    else:
+        address = options.address
+    interactive_client(options.file, address,
                        options.cache_size, options.readonly, options.repair,
                        options.startup)
 

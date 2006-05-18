@@ -14,18 +14,23 @@ from time import sleep
 
 class Test (UTest):
 
+    address = ("", 9123)
+
     def _pre(self):
-        self.port = 9123
-        self.server = Popen4('python %s --port=%s' % (
-            run_durus.__file__, self.port))
+        if type(self.address) is tuple:
+            self.server = Popen4('python %s --port=%s' % (
+                run_durus.__file__, self.address[1]))
+        else:
+            self.server = Popen4('python %s --address=%s' % (
+                run_durus.__file__, self.address))
         sleep(3) # wait for bind
 
     def _post(self):
-        run_durus.stop_durus("", self.port)
+        run_durus.stop_durus(self.address)
 
     def check_client_storage(self):
-        b = ClientStorage(port=self.port)
-        c = ClientStorage(port=self.port)
+        b = ClientStorage(address=self.address)
+        c = ClientStorage(address=self.address)
         assert b.new_oid() == p64(1)
         assert b.new_oid() == p64(2)
         try:
@@ -49,6 +54,10 @@ class Test (UTest):
         assert Set(c.sync()) == Set([p64(0), p64(1)])
         assert record == c.load(p64(0))
 
+class UnixDomainSocketTest(Test):
+
+    address = "test.durus_server"
+
 if __name__ == "__main__":
     Test()
-
+    UnixDomainSocketTest()

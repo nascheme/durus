@@ -56,6 +56,17 @@ class Storage(object):
         """
         raise NotImplementedError
 
+    def pack(self):
+        """Remove obsolete records from the storage."""
+        raise NotImplementedError
+
+    def get_size(self):
+        """() -> int | None
+        Return the number of objects available, or None if the number is not known.
+        """
+        return None
+
+
 
 def gen_referring_oid_record(storage, referred_oid):
     """(storage:Storage, referred_oid:str) -> sequence([oid:str, record:str])

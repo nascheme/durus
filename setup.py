@@ -15,7 +15,7 @@ from distutils.extension import Extension
 persistent = Extension(name="durus._persistent", sources=["_persistent.c"])
 
 setup(name = "Durus",
-      version = "3.3",
+      version = "3.4.1",
       description = "A Python Object Database",
       long_description = """
       Serves and manages changes to persistent objects being used in

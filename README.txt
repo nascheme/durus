@@ -84,10 +84,12 @@ Example using ClientStorage to open a Connection to a Durus server:
     from durus.connection import Connection
     connection = Connection(ClientStorage())
 
-Note that the ClientStorage constructor supports keyword arguments for
-host and port.  If you provide those you should be sure to start the
-storage server the same way.  The "durus -s" command supports options
-for host and port, as does the StorageServer constructor.
+Note that the ClientStorage constructor supports the "address" keyword
+that you can use to specify the address to use.  The value must be either
+a (host, port) tuple or a string giving a path to use for a unix domain
+socket. If you provide the address you should be sure to start the
+storage server the same way.  The "durus" command line tool supports 
+options to specify the address.
 
 The connection instance has a get_root() method that you can use to
 obtain the root object.

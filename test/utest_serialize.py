@@ -4,7 +4,7 @@ $Id$
 """
 from durus.connection import ROOT_OID
 from durus.error import InvalidObjectReference
-from durus.persistent import Persistent
+from durus.persistent import Persistent, ConnectionBase
 from durus.serialize import ObjectWriter, ObjectReader, pack_record
 from durus.serialize import unpack_record, split_oids
 from sancho.utest import UTest
@@ -13,7 +13,7 @@ from sancho.utest import UTest
 class Test (UTest):
 
     def check_object_writer(self):
-        class FakeConnection:
+        class FakeConnection(ConnectionBase):
             def new_oid(self):
                 return ROOT_OID
         connection = FakeConnection()
@@ -23,7 +23,7 @@ class Test (UTest):
         x._p_oid = ROOT_OID
         x._p_connection = connection
         assert s._persistent_id(x) == (ROOT_OID, Persistent)
-        x._p_connection = ROOT_OID
+        x._p_connection = FakeConnection()
         # connection of x no longer matches connection of s.
         try:
             s._persistent_id(x)

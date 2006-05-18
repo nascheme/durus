@@ -7,7 +7,6 @@ from durus.storage_server import StorageServer, recv
 from random import choice
 from sancho.utest import UTest
 
-
 class Test (UTest):
 
     def check_storage_server(self):
@@ -15,6 +14,8 @@ class Test (UTest):
         host = '127.0.0.1'
         port = 2972
         server=StorageServer(storage, host=host, port=port)
+        file = "test.durus_server"
+        server=StorageServer(storage, address=file)
 
     def check_receive(self):
         class Dribble:

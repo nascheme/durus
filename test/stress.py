@@ -5,6 +5,7 @@
 from __future__ import division
 [division] # for checker
 import os
+import sys
 import time
 import random
 import md5
@@ -141,9 +142,12 @@ def main():
         connection.abort()
     n = options.loops
     while n is None or n > 0:
+        
         if n is not None:
             n -= 1
         try:
+            if hasattr(sys, 'gettotalrefcount'):
+                print 'refs =', sys.gettotalrefcount()
             if randbool():
                 connection.abort()
             verify_db(connection)

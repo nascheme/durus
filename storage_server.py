@@ -6,6 +6,8 @@ from datetime import datetime
 from durus.logger import log, is_logging
 from durus.serialize import extract_class_name
 from durus.utils import p32, u32, u64
+from os import unlink
+from os.path import exists
 from sets import Set
 import errno
 import select
@@ -28,7 +30,7 @@ def recv(s, n):
     """
     data = []
     while n > 0:
-        hunk = s.recv(n)
+        hunk = s.recv(min(n, 1000000))
         if not hunk:
             raise IOError, 'connection reset by peer'
         n -= len(hunk)
@@ -47,62 +49,83 @@ class ClientError(Exception):
 
 class StorageServer:
 
-    def __init__(self, storage, host=DEFAULT_HOST, port=DEFAULT_PORT):
+    def __init__(self, storage, host=DEFAULT_HOST,
+                 port=DEFAULT_PORT, address=None):
         self.storage = storage
         self.clients = []
         self.sockets = []
         self.packer = None
-        self.host = host
-        self.port = port
+        if address is None:
+            self.address = (host, port)
+        else:
+            self.address = address
         self.load_record = {}
 
     def serve(self):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        if type(self.address) is tuple:
+            address_family = socket.AF_INET
+        else:
+            address_family = socket.AF_UNIX
+            if exists(self.address):
+                raise SystemExit(
+                    "%r already exists. "
+                    "Remove it or use a different address." % self.address)
+        sock = socket.socket(address_family, socket.SOCK_STREAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
-            sock.bind((self.host, self.port))
+            sock.bind(self.address)
         except socket.error, exc:
             if exc.args[0] == errno.EADDRINUSE:
-                raise RuntimeError(
-                    "Port %s on %s is already in use by another process." %
-                    (self.port, self.host))
+                raise SystemExit(
+                    "Address %r is already in use by another process." %
+                    self.address)
+            else:
+                raise
         sock.listen(40)
         log(20, 'Ready with %s objects', self.storage.get_size())
         self.sockets.append(sock)
-        while 1:
-            if self.packer is not None:
-                timeout = 0.0
-            else:
-                timeout = None
-            r, w, e = select.select(self.sockets, [], [], timeout)
-            for s in r:
-                if s is sock:
-                    # new connection
-                    conn, addr = s.accept()
-                    conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-                    conn.settimeout(TIMEOUT)
-                    self.clients.append(_Client(conn, addr))
-                    self.sockets.append(conn)
+        try:
+            while 1:
+                if self.packer is not None:
+                    timeout = 0.0
                 else:
-                    # command from client
+                    timeout = None
+                r, w, e = select.select(self.sockets, [], [], timeout)
+                for s in r:
+                    if s is sock:
+                        # new connection
+                        conn, addr = s.accept()
+                        if address_family == socket.AF_INET:
+                            conn.setsockopt(
+                                socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                        conn.settimeout(TIMEOUT)
+                        self.clients.append(_Client(conn, addr))
+                        self.sockets.append(conn)
+                    else:
+                        # command from client
+                        try:
+                            self.handle(s)
+                        except (ClientError, socket.error, socket.timeout), exc:
+                            log(10, '%s', ''.join(map(str, exc.args)))
+                            self.sockets.remove(s)
+                            self.clients.remove(self._find_client(s))
+                if self.packer is not None:
                     try:
-                        self.handle(s)
-                    except (ClientError, socket.error, socket.timeout), exc:
-                        log(10, '%s', ''.join(map(str, exc.args)))
-                        self.sockets.remove(s)
-                        self.clients.remove(self._find_client(s))
-            if self.packer is not None:
-                try:
-                    self.packer.next()
-                except StopIteration:
-                    log(20, 'Pack finished at %s' % datetime.now())
-                    self.packer = None # done packing
+                        self.packer.next()
+                    except StopIteration:
+                        log(20, 'Pack finished at %s' % datetime.now())
+                        self.packer = None # done packing
+        finally:
+            if address_family == socket.AF_UNIX:
+                unlink(self.address)
 
     def handle(self, s):
         command_code = s.recv(1)
         if not command_code:
             raise ClientError('EOF from client')
-        handler = getattr(self, 'handle_%s' % command_code)
+        handler = getattr(self, 'handle_%s' % command_code, None)
+        if handler is None:
+            raise ClientError('No such command code: %r' % command_code)
         handler(s)
 
     def _find_client(self, s):
@@ -201,19 +224,28 @@ class StorageServer:
         raise SystemExit
 
 
-def wait_for_server(host, port, maxtries=30, sleeptime=2):
+def wait_for_server(host=DEFAULT_HOST, port=DEFAULT_PORT, maxtries=30, 
+    sleeptime=2, address=None):
     # Wait for the server to bind to the port.
     import time
+    if address is None:
+        server_address = (host, port)
+    else:
+        server_address = address
+    if type(server_address) is tuple:
+        address_family = socket.AF_INET
+    else:
+        address_family = socket.AF_UNIX
     for attempt in range(maxtries):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock = socket.socket(address_family, socket.SOCK_STREAM)
         try:
-            sock.connect((host, port))
+            sock.connect(server_address)
         except socket.error, e:
-            if not e.args[0] == errno.ECONNREFUSED:
+            if e.args[0] not in (errno.ECONNREFUSED, errno.ENOENT):
                 raise
             time.sleep(sleeptime)
         else:
             break
     else:
-        raise SystemExit('Timeout waiting for port.')
+        raise SystemExit('Timeout waiting for address.')
     sock.close()

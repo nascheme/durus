@@ -10,7 +10,7 @@ from durus.storage_server import DEFAULT_PORT, DEFAULT_HOST, StorageServer
 from durus.file_storage import FileStorage, TempFileStorage
 from durus.logger import log, logger, direct_output
 
-def start_durus(logfile, logginglevel, file, repair, readonly, host, port):
+def start_durus(logfile, logginglevel, file, repair, readonly, address):
     if logfile is None:
         logfile = sys.stderr
     else:
@@ -22,16 +22,20 @@ def start_durus(logfile, logginglevel, file, repair, readonly, host, port):
     else:
         storage = FileStorage(file, repair=repair,
                               readonly=readonly)
-    log(20, 'Storage file=%s host=%s port=%s', storage.fp.name, host, port)
-    StorageServer(storage, host=host, port=port).serve()
+    log(20, 'Storage file=%s address=%r', storage.fp.name, address)
+    StorageServer(storage, address=address).serve()
 
-def stop_durus(host, port):
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+def stop_durus(address):
+    if type(address) is tuple:
+        address_family = socket.AF_INET
+    else:
+        address_family = socket.AF_UNIX
+    sock = socket.socket(address_family, socket.SOCK_STREAM)
     try:
-        sock.connect((host, port))
+        sock.connect(address)
     except socket.error, e:
-        raise SystemExit("Durus server %s:%s doesn't seem to be running." %
-                         (host, port))
+        raise SystemExit("Durus server %s doesn't seem to be running." %
+                          repr(address))
     sock.send('Q') # graceful exit message
     sock.close()
 
@@ -47,6 +51,12 @@ def run_durus_main():
     parser.add_option(
         '--host', dest='host', default=DEFAULT_HOST,
         help='Host to listen on. (default=%s)' % DEFAULT_HOST)
+    parser.add_option(
+        '--address', dest="address", default=None,
+        help=(
+            "Address of the server. (default=%s)\n"
+            "If given, this is the path to a Unix domain socket for "
+            "the server."))
     logginglevel = logger.getEffectiveLevel()
     parser.add_option(
         '--logginglevel', dest='logginglevel', default=logginglevel, type='int',
@@ -68,17 +78,19 @@ def run_durus_main():
         '--stop', dest='stop', action='store_true',
         help='Instead of starting the server, try to stop a running one.')
     (options, args) = parser.parse_args()
+    if options.address is None:
+        address = (options.host, options.port)
+    else:
+        address = options.address
     if not options.stop:
         start_durus(options.logfile,
                     options.logginglevel,
                     options.file,
                     options.repair,
                     options.readonly,
-                    options.host,
-                    options.port)
+                    address)
     else:
-        stop_durus(options.host,
-                   options.port)
+        stop_durus(address)
 
 
 if __name__ == '__main__':

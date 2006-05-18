@@ -14,13 +14,22 @@ from durus.utils import p32, u32, p64, u64
 
 class ClientStorage(Storage):
 
-    def __init__(self, port=DEFAULT_PORT, host=DEFAULT_HOST):
-        self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    def __init__(self, host=DEFAULT_HOST, port=DEFAULT_PORT, address=None):
+        if address is None:
+            self.address = (host, port)
+        else:
+            self.address = address
+        if type(self.address) is tuple:
+            address_family = socket.AF_INET
+        else:
+            address_family = socket.AF_UNIX
+        self.s = socket.socket(address_family, socket.SOCK_STREAM)
+        if address_family == socket.AF_INET:
+            self.s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         try:
-            self.s.connect((host, port))
+            self.s.connect(self.address)
         except socket.error, exc:
-            raise socket.error, "%s:%s %s" % (host, port, exc)
+            raise socket.error, "%r %s" % (self.address, exc)
         self.records = {}
 
     def new_oid(self):
@@ -38,7 +47,7 @@ class ClientStorage(Storage):
         elif status == STATUS_KEYERROR:
             raise DurusKeyError(oid)
         else:
-            raise ProtocolError, 'server returned invalid status %r' % status
+            raise ProtocolError('status=%r, oid=%r' % (status, oid))
         rlen = u32(recv(self.s, 4))
         record = recv(self.s, rlen)
         return record

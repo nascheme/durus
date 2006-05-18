@@ -127,7 +127,7 @@ class TestConnectionClientStorage (TestConnection):
         sleep(3) # wait for bind
 
     def _post(self):
-        run_durus.stop_durus("", self.port)
+        run_durus.stop_durus(("", self.port))
 
     def check_conflict(self):
         b = Connection(self._get_storage())
@@ -139,11 +139,37 @@ class TestConnectionClientStorage (TestConnection):
         c.commit()
         raises(ConflictError, b.commit)
         raises(KeyError, rootb.__getitem__, 'c')
+        sync_count = b.sync_count
         b.abort()
+        assert b.get_sync_count() > sync_count
         assert rootb._p_is_ghost()
         rootc['d'] = Persistent()
         c.commit()
         rootb['d']
+
+    def check_fine_conflict(self):
+        c1 = Connection(self._get_storage())
+        c2 = Connection(self._get_storage())
+        c1.get_root()['A'] = Persistent()
+        c1.get_root()['A'].a = 1
+        c1.get_root()['B'] = Persistent()
+        c1.commit()
+        c2.abort()
+        # c1 has A loaded.
+        assert not c1.get_root()['A']._p_is_ghost()
+        c1.get_root()['B'].b = 1
+        c2.get_root()['A'].a = 2
+        c2.commit()
+        # Even though A has been changed by c2,
+        # c1 has not accessed an attribute of A since
+        # the last c1.commit(), so we don't want a ConflictError.
+        c1.commit()
+        assert not c1.get_root()['A']._p_is_ghost()
+        c1.get_root()['A'].a # accessed!
+        c1.get_root()['B'].b = 1
+        c2.get_root()['A'].a = 2
+        c2.commit()
+        raises(ConflictError, c1.commit)
 
 if __name__ == "__main__":
     TestConnection()

@@ -16,18 +16,48 @@ Q:
 A:
     The initial motivation mostly that we wanted to use new-style
     classes instead of ExtensionClasses.  Durus does not have as many
-    features as ZODB (multi-threaded access, multiple storage backends,
-    asynchronous IO, versions, undo, conflict resolution).  That all
-    adds up to making the code much simpler.
+    features as ZODB (multi-threaded storage access, multiple storage 
+    backends, asynchronous IO, versions, undo, conflict resolution).  
+    That all adds up to making the code much simpler.
 
     Recent releases of ZODB now use new-style classes too.  So, if you
-    need extra features or multi-threading then ZODB is still the way to
-    go.  We like Durus because it does what we need and it is simple
-    enough that we can understand it in its entirety.
+    need those extra features then ZODB is still the way to go.  We like
+    Durus because it does what we need and it is simple enough that we
+    can understand it in its entirety.
 
     The programming interface is nearly the same as ZODB (Durus is
     heavily influenced by the ZODB design).  Speed is pretty similar
     although Durus may be a little faster.
+
+
+Q:
+    Is Durus thread-safe?
+
+A:
+    Durus Connections using ClientStorage should be safe to use in multiple 
+    threads in the same process as long as no individual Connection or 
+    ClientStorage instance or any of the Persistent instances obtained from 
+    that Connection are accessed from more than one thread.
+    
+    Our applications use multiple processes when they need multiple threads 
+    of control.
+
+
+Q:
+    Can a Durus application use multiple Durus databases?
+
+A:  
+    Yes, and this may be a good idea if you have data sets that are
+    independent.  The thing you can't do is put a reference to
+    an object from Connection A into an object from Connection B.
+
+
+Q:
+    Does Durus support "undo"?
+
+A:
+    No.  A HistoryConnection does, however, provide a way to examine
+    the state of the database in any transaction since the last pack.
 
 
 Q:
@@ -73,16 +103,18 @@ A:
     are complicated so the source code is probably the best reference.
     In essence, a read conflict occurs when a client tries to load data
     from the storage server that is inconsistent with data that it has
-    previously loaded.  For example, a client loads object A, a second
-    client modifies object A and object B.  If the first client tries to
-    load object B it will get a read conflict error.  The state of
-    object A, already in loaded, is not consistent with the state of B.
+    accessed since the last ``commit()``/``abort()``.
+
+    For example, a client examines object A, a second client modifies object 
+    A and object B.  If the first client tries to load object B it will get 
+    a read conflict error.  The state of object A, already accessed, is not 
+    consistent with the state of B.
 
     Multi-version concurrency control (MVCC) can avoid read conflicts.
     When MVCC is used, an older version of the object's state is
     returned to the client (a version consistent with the other objects
-    that the client loaded).  Durus does not implement MVCC.  Recent
-    versions of the Zope Object Database (ZODB) do.
+    that the client loaded).  The Zope Object Database (ZODB) offers
+    MVCC.  Durus does not.
 
 
 Q:
@@ -111,7 +143,7 @@ Q:
 
 A:
     If you can't easily find them by following the object graph then you
-    can use the ``gen_oid_class()`` function from the ``storage``
+    can use the ``gen_every_instance()`` function from the ``connection``
     module.  Note that this is expensive since it iterates over every
     record in the database.  We use it only for making data model
     changes.
@@ -121,14 +153,34 @@ Q:
     I want to rename a class.  How do I update the database?
 
 A:
-    First, make sure the class can be accessed via the old name (e.g.
-    ``OldClass = NewClass``).  In your update DB script, set the
-    ``_p_changed`` flag on all instances of the class and then call
-    ``commit()``.  You can now remove the old name.
+    Here is an example script::
+    
+        import new_module
+        import old_module
+        # Put the new class where the old class was.
+        old_module.OldClass = new_module.NewClass
+        # Open the connection.
+        from durus.file_storage import FileStorage
+        from durus.connection import Connection
+        from durus.connection import gen_every_instance, touch_every_reference
+        connection = Connection(FileStorage("myfile.durus"))
+        # Make sure that every instance of the class is marked as changed.
+        for obj in gen_every_instance(connection, old_module.OldClass):
+            obj._p_note_change()
+        # Make sure that every referring instance is marked as changed.        
+        touch_every_reference('OldClass')
+        connection.commit()
+
+    If your database structure is clear enough, you should iterate over 
+    every instance using something more direct than gen_every instance().
+    If you have a direct way to iterate over the instances that contain 
+    references to instances of OldClass, do that instead of 
+    touch_every_reference() and call _p_note_change() on each of them.  
 
 
 Q:
-    I want to rename a module.  How do I update the database?
+    I want to rename a module that includes a Persistent subclass.  
+    How do I update the database?
 
 A:
     This is basically the same as changing a class name.  A useful trick
@@ -148,3 +200,19 @@ A:
     and the FileStorage class can detect if the last transaction has
     been truncated.  There is no need to shutdown the storage server
     first.
+
+
+Q:
+    What kind of transaction isolation is provided by Durus?
+
+A:
+    The SQL isolation levels are characterized by the three possible phenomena:
+    "Dirty read", "Non-repeatable read", and "Phantom".  These phenomena are
+    generally described in terms of SQL queries, but they seem to have a reasonable
+    interpretation in object-database terms, too.  We think that Durus prevents
+    all three phenomena, so it provides the highest isolation level SERIALIZABLE.
+    Database systems can sometimes deliver better performance when lower isolation 
+    levels are required.  Durus does not support lower isolation levels.
+
+
+    

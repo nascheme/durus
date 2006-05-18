@@ -1,3 +1,71 @@
+3.4.1: (2006-05-18):
+
+	* Fix a memory leak that was in the 3.4 tarball until 2006-05-12.
+	
+	* Fix doc string errors.  
+	
+	* Fix initialization of _p_touched in python version of PersistentBase
+	  to agree with the C implementation.
+	  
+3.4: (2006-05-11): 28347
+
+    * Refine the conflict avoidance and cache aging behavior.  Now conflicts
+      don't occur unless there is an invalid object for which this Connection 
+      has actually accessed an attribute since the last call to commit() or 
+      abort().  The Connection saves a "sync_count" on every commit() or abort().
+      On every access to (an ordinary) attribute of a Persistent instance,
+      the _p_touched is set to be the Connection's sync_count.
+      To make this possible without any significant performance penalty, 
+      the _p_connection and other '_p_' attributes are moved from 
+      Persistent to PersistentBase and implemented in C.
+      Also, a ConnectionBase class is implemented in C so that the
+      sync_count, which is needed so frequently, can be accessed directly
+      in the C implementation of PersistentBase.
+      
+      Since we now know which instances have actually been accessed since the
+      last commit() or abort(), the Connection no longer need to maintain the 
+      set of loaded_oids.  The cache manager can use the _p_touched to 
+      distinguish less recently used instances.
+      
+      The Cache class has a new ghost_fraction attribute.  The value of
+      this attribute defaults to 0.5 and can be any number between 0 and 1.
+      Higher values make the cache more aggressive about ghosting objects
+      as it tries to reduce the cache size.
+      
+      The Cache "held" attribute is removed, along with the hold() method.
+      
+    * Added a history.py module that defines HistoryConnection, a Connection
+      subclass that supports time-travel in a read-only FileStorage file.
+      The class provides next() and previous() methods for stepping 
+      among the stored transactions.  It also provides next_instance(obj)
+      and previous_instance(obj) for moving to to a transaction where
+      obj has a state that is different from the current state.  
+      Note that packing a FileStorage consolidates the transactions, so
+      the HistoryConnection can only move among the transactions since
+      the last pack.
+
+    * Make the durus client run in a __console__ module.  This makes it 
+      behave a little more like the regular Python interpreter.
+
+    * Add support for running the durus client/server connections through
+      unix domain sockets.  The ClientStorage and StorageServer constructors
+      accept an "address" keyword argument.  If the address value can be 
+      a (host, port) tuple or else a string giving a path use for the
+      unix domain socket.  The separate "host" and "port" keyword parameters 
+      are still supported, but they may be removed in future releases.  If your
+      code calls these constructors, please change it to use the "address"
+      keyword.
+      
+    * Change the recv() function used in the client/server to read in chunks
+      of at most 1 million bytes.  This avoids a malloc error observed when
+      running test/stress.py on an OS X machine with python 2.4.2.
+ 
+    * Make the durus server a little tougher.  If it gets an unknown command,
+      it now logs the error and closes the connection instead of crashing.
+      
+    * Add Storage.pack() and Storage.get_size().
+
+
 3.3: (2006-03-15): 28065
 
     * Keep strong references to objects until we decide that they haven't 
