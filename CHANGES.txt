@@ -1,3 +1,88 @@
+3.5: (2006-08-16):
+
+    * Fix a bug introduced in version 3.4 that could, under certain conditions,
+      allow conflicts to be missed.  In particular, if the last strong reference 
+      to a Persistent instance was removed, a conflict involving that instance
+      would be missed.  The fix involves changing the Persistent.__getattr__
+      so that it calls the 'note_access' method on the Connection.
+      This method creates a strong reference to the Persistent instance by
+      adding it to a 'recent_objects' set.  Objects are eventually removed from 
+      the recent_objects set when they are converted into ghosts in the cache's
+      shrink() method.  Since a set() is used for recent_objects, all Persistent 
+      instances *must* now be hashable.  PersistentSet instances were not, and
+      that has been changed.
+
+    * Revise the cache code.  It now uses a WeakValueDict instead of a plain dict
+      to hold the references.  This simplifies the code because we no longer need
+      to call the weakref instances directly.  It also helps the cache shrinking
+      loop because the weakref callbacks have an immediate impact on the size of
+      the mapping.
+    
+    * Remove the ghost_fraction attribute from the Cache.  It is no longer used 
+      in shrink().
+      
+    * Rename the Persistent '_p_touched' attribute to '_p_serial'.  This is
+      set, on every attribute access, to the value of the Connection's
+      'transaction_serial' attribute (which was formerly named 'sync_count').
+
+    * Add a bulk_load() method to Storage.  The ClientStorage implementation
+      reduces avoids latency delays be retrieving many object records with
+      a single request to the server.
+
+    * Add Connection.get_crawler().  This returns a generator for the sequence
+      of objects reachable from a given start OID.  The crawler uses the
+      new bulk_load() method for speed.  It can be used, with some care, to
+      initialize the object cache.
+
+    * Remove Connection.cache_get() and Connection.cache_set().
+
+    * Use set instead of Set throughout.  This means that Durus now requires 
+      Python version >= 2.4.
+
+    * Add the ability to set the owner, group, and umask when a unix domain
+      socket is used for a server.
+
+    * Attempt to clean up stale socket files when starting a server on a
+      unix domain socket.
+
+    * Move some repeated code related to addresses and sockets into a
+      SocketAddress class and subclasses HostPortAddress and
+      UnixDomainSocketAddress.
+
+    * In the server, add support for a protocol verification command.
+      Use this in the client constructor to allow orderly behavior if
+      the client and the server do not implement the same protocol.
+
+    * Add a server command for allocating blocks of oids.
+
+    * Add client support for maintaining and drawing from a pool of oids
+      allocated by the server.  This reduces the number of commands that 
+      must be sent to the server during a commit.
+
+    * Add support for recycling allocated oids when there is a conflict during
+      a commit.
+
+    * Make sure that the FileStorage constructor can work if the named file
+      exists, but is empty.
+
+    * Initialize sync_count to 1 so that new ghosts, for which _p_touched
+      is initialized to 0, never appear to have been accessed since the last
+      transaction.
+
+    * Move some logic used for unpickling references to the connection cache
+      so that it can be faster.  Add Cache.get_instance() for this purpose.
+      Add Connection.get_cache() so that the ObjectReader can use it.
+
+
+3.4.1: (2006-05-18):
+
+    * Fix a memory leak that was in the 3.4 tarball until 2006-05-12.
+
+    * Fix doc string errors.
+
+    * Fix initialization of _p_touched in python version of PersistentBase
+      to agree with the C implementation.
+
 3.4: (2006-05-11): 28347
 
     * Refine the conflict avoidance and cache aging behavior.  Now conflicts

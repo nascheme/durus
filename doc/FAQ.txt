@@ -89,10 +89,12 @@ Q:
     When does a write conflict occur?
 
 A:
-    If a client makes changes based on out-of-date data and tries to commit
-    then a ``ConflictError`` exception will be raised.  This occurs when
-    some other client has committed a change during the first client's
-    transaction (i.e. between ``commit()``/``abort()`` and ``commit()``).
+    If, in the period since the last time client A called ``commit()``/``abort()``,
+    client A has accessed an attribute of a Persistent instance X and 
+    some other client has also committed changes to X, then a ``ConflictError``
+    exception will be raised when client A tries to commit any changes.
+    This prevents client A from committing changes that are based on out-of-date
+    data.
 
 
 Q:
@@ -200,19 +202,5 @@ A:
     and the FileStorage class can detect if the last transaction has
     been truncated.  There is no need to shutdown the storage server
     first.
-
-
-Q:
-    What kind of transaction isolation is provided by Durus?
-
-A:
-    The SQL isolation levels are characterized by the three possible phenomena:
-    "Dirty read", "Non-repeatable read", and "Phantom".  These phenomena are
-    generally described in terms of SQL queries, but they seem to have a reasonable
-    interpretation in object-database terms, too.  We think that Durus prevents
-    all three phenomena, so it provides the highest isolation level SERIALIZABLE.
-    Database systems can sometimes deliver better performance when lower isolation 
-    levels are required.  Durus does not support lower isolation levels.
-
 
     

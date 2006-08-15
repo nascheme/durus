@@ -16,6 +16,8 @@ class Test (UTest):
         class FakeConnection(ConnectionBase):
             def new_oid(self):
                 return ROOT_OID
+            def note_access(self, obj):
+                pass
         connection = FakeConnection()
         self.s=s=ObjectWriter(connection)
         x = Persistent()

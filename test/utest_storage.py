@@ -24,6 +24,10 @@ class Test (UTest):
         b.end()
         assert len(list(b.gen_oid_record())) == 2
         assert record == b.load(p64(0))
+        records = b.bulk_load([p64(0), p64(1)])
+        assert len(list(records)) == 2
+        records = b.bulk_load([p64(0), p64(1), p64(2)])
+        raises(KeyError, list, records)
 
 if __name__ == "__main__":
     Test()

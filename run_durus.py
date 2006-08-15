@@ -7,6 +7,7 @@ import sys
 import socket
 from optparse import OptionParser
 from durus.storage_server import DEFAULT_PORT, DEFAULT_HOST, StorageServer
+from durus.storage_server import SocketAddress
 from durus.file_storage import FileStorage, TempFileStorage
 from durus.logger import log, logger, direct_output
 
@@ -22,18 +23,13 @@ def start_durus(logfile, logginglevel, file, repair, readonly, address):
     else:
         storage = FileStorage(file, repair=repair,
                               readonly=readonly)
-    log(20, 'Storage file=%s address=%r', storage.fp.name, address)
-    StorageServer(storage, address=address).serve()
+    socket_address = SocketAddress.new(address)
+    log(20, 'Storage file=%s address=%s', storage.fp.name, socket_address)
+    StorageServer(storage, address=socket_address).serve()
 
 def stop_durus(address):
-    if type(address) is tuple:
-        address_family = socket.AF_INET
-    else:
-        address_family = socket.AF_UNIX
-    sock = socket.socket(address_family, socket.SOCK_STREAM)
-    try:
-        sock.connect(address)
-    except socket.error, e:
+    sock = SocketAddress.new(address).get_connected_socket()
+    if sock is None:
         raise SystemExit("Durus server %s doesn't seem to be running." %
                           repr(address))
     sock.send('Q') # graceful exit message
@@ -51,12 +47,22 @@ def run_durus_main():
     parser.add_option(
         '--host', dest='host', default=DEFAULT_HOST,
         help='Host to listen on. (default=%s)' % DEFAULT_HOST)
-    parser.add_option(
-        '--address', dest="address", default=None,
-        help=(
-            "Address of the server. (default=%s)\n"
-            "If given, this is the path to a Unix domain socket for "
-            "the server."))
+    if hasattr(socket, 'AF_UNIX'):
+        parser.add_option(
+            '--address', dest="address", default=None,
+            help=(
+                "Address of the server.\n"
+                "If given, this is the path to a Unix domain socket for "
+                "the server."))
+        parser.add_option(
+            '--owner', dest="owner", default=None,
+            help="Owner of the Unix domain socket (the --address value).")
+        parser.add_option(
+            '--group', dest="group", default=None,
+            help="group of the Unix domain socket (the --address value).")
+        parser.add_option(
+            '--umask', dest="umask", default=None, type="int",
+            help="umask for the Unix domain socket (the --address value).")
     logginglevel = logger.getEffectiveLevel()
     parser.add_option(
         '--logginglevel', dest='logginglevel', default=logginglevel, type='int',
@@ -78,10 +84,11 @@ def run_durus_main():
         '--stop', dest='stop', action='store_true',
         help='Instead of starting the server, try to stop a running one.')
     (options, args) = parser.parse_args()
-    if options.address is None:
-        address = (options.host, options.port)
+    if getattr(options, 'address', None) is None:
+        address = SocketAddress.new((options.host, options.port))
     else:
-        address = options.address
+        address = SocketAddress.new(address=options.address,
+            owner=options.owner, group=options.group, umask=options.umask)
     if not options.stop:
         start_durus(options.logfile,
                     options.logginglevel,

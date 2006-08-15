@@ -130,7 +130,8 @@ def main():
                       help='Maximum number of loops before exiting.')
 
     (options, args) = parser.parse_args()
-
+    from durus.logger import logger
+    logger.setLevel(5)
     storage = ClientStorage(host=options.host, port=options.port)
     connection = Connection(storage, cache_size=options.cache_size)
     try:

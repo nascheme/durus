@@ -8,14 +8,13 @@ from durus.logger import log
 from durus.persistent import ConnectionBase
 from durus.persistent_dict import PersistentDict
 from durus.serialize import ObjectReader, ObjectWriter
-from durus.serialize import unpack_record, pack_record
+from durus.serialize import split_oids, unpack_record, pack_record
 from durus.storage import Storage
 from durus.utils import p64
 from itertools import islice, chain
 from os import getpid
-from sets import Set
 from time import time
-from weakref import ref
+from weakref import WeakValueDictionary, ref
 
 ROOT_OID = p64(0)
 
@@ -28,10 +27,12 @@ class Connection(ConnectionBase):
       cache: Cache
       reader: ObjectReader
       changed: {oid:str : Persistent}
-      invalid_oids: Set([str])
-         Set of oids of objects known to have obsolete state. 
-      sync_count: int
+      invalid_oids: set([str])
+         Set of oids of objects known to have obsolete state.
+      transaction_serial: int
         Number of calls to commit() or abort() since this instance was created.
+        This is used to maintain consistency, and to implement LRU replacement
+        in the cache.
     """
 
     def __init__(self, storage, cache_size=100000):
@@ -44,8 +45,7 @@ class Connection(ConnectionBase):
         self.storage = storage
         self.reader = ObjectReader(self)
         self.changed = {}
-        self.invalid_oids = Set()
-        self.sync_count = 0
+        self.invalid_oids = set()
         try:
             storage.load(ROOT_OID)
         except KeyError:
@@ -55,7 +55,7 @@ class Connection(ConnectionBase):
             writer.close()
             self.storage.store(ROOT_OID, pack_record(ROOT_OID, data, refs))
             self.storage.end(self._handle_invalidations)
-            self.sync_count += 1
+            self.transaction_serial += 1
         self.new_oid = storage.new_oid # needed by serialize
         self.cache = Cache(cache_size)
 
@@ -77,15 +77,15 @@ class Connection(ConnectionBase):
 
     def set_cache_size(self, size):
         """(size:int)
-        Set the target size for the cache.        
+        Set the target size for the cache.
         """
         self.cache.set_size(size)
 
-    def get_sync_count(self):
+    def get_transaction_serial(self):
         """() -> int
         Return the number of calls to commit() or abort() on this instance.
         """
-        return self.sync_count
+        return self.transaction_serial
 
     def get_root(self):
         """() -> Persistent
@@ -126,20 +126,52 @@ class Connection(ConnectionBase):
             pickle = self.get_stored_pickle(oid)
         except KeyError:
             return None
-        obj = self.reader.get_ghost(pickle)
-        obj._p_oid = oid
-        obj._p_connection = self
-        obj._p_set_status_ghost()
-        self.cache[oid] = obj
+        klass = loads(pickle)
+        obj = self.cache.get_instance(oid, klass, self)
         return obj
 
     __getitem__ = get
 
-    def cache_get(self, oid):
-        return self.cache.get(oid)
+    def get_crawler(self, start_oid=ROOT_OID, batch_size=100):
+        """(start_oid:str = ROOT_OID, batch_size:int = 100) ->
+            sequence(Persistent)
+        Returns a generator for the sequence of objects in a breadth first
+        traversal of the object graph, starting at the given start_oid.
+        The objects in the sequence have their state loaded at the same time,
+        so this can be used to initialize the object cache.
+        This uses the storage's bulk_load() method to make it faster.  The
+        batch_size argument sets the number of object records loaded on each
+        call to bulk_load().
+        """
+        def get_object_and_refs(object_record):
+            oid, data, refdata = unpack_record(object_record)
+            obj = self.cache.get(oid)
+            if obj is None:
+                klass = loads(data)
+                obj = self.cache.get_instance(oid, klass, self)
+                state = self.reader.get_state(data, load=True)
+                obj.__setstate__(state)
+                obj._p_set_status_saved()
+            elif obj._p_is_ghost():
+                state = self.reader.get_state(data, load=True)
+                obj.__setstate__(state)
+                obj._p_set_status_saved()
+            return obj, split_oids(refdata)
+        queue = [start_oid]
+        seen = set()
+        while queue:
+            batch = queue[:batch_size]
+            queue = queue[batch_size:]
+            seen.update(batch)
+            for record in self.storage.bulk_load(batch):
+                obj, refs = get_object_and_refs(record)
+                for ref in refs:
+                    if ref not in seen:
+                        queue.append(ref)
+                yield obj
 
-    def cache_set(self, oid, obj):
-        self.cache[oid] = obj
+    def get_cache(self):
+        return self.cache
 
     def load_state(self, obj):
         """(obj:Persistent)
@@ -159,6 +191,12 @@ class Connection(ConnectionBase):
         state = self.reader.get_state(pickle)
         setstate(state)
 
+    def note_access(self, obj):
+        assert obj._p_connection is self
+        assert obj._p_oid is not None
+        obj._p_serial = self.transaction_serial
+        self.cache.recent_objects.add(obj)
+
     def note_change(self, obj):
         """(obj:Persistent)
         This is done when any persistent object is changed.  Changed objects
@@ -175,7 +213,7 @@ class Connection(ConnectionBase):
         try to ghostify enough of the saved objects to achieve
         the target cache size.
         """
-        self.cache.shrink()
+        self.cache.shrink(self)
 
     def _sync(self):
         """
@@ -198,7 +236,7 @@ class Connection(ConnectionBase):
         self.changed.clear()
         self._sync()
         self.shrink_cache()
-        self.sync_count += 1
+        self.transaction_serial += 1
 
     def commit(self):
         """
@@ -233,14 +271,15 @@ class Connection(ConnectionBase):
                 self.storage.end(self._handle_invalidations)
             except ConflictError, exc:
                 for oid, obj in new_objects.iteritems():
+                    obj._p_oid = None
                     del self.cache[oid]
                     obj._p_set_status_unsaved()
-                    obj._p_oid = None
                     obj._p_connection = None
+                    obj._p_ref = None
                 raise
             self.changed.clear()
         self.shrink_cache()
-        self.sync_count += 1
+        self.transaction_serial += 1
 
     def _handle_invalidations(self, oids, read_oid=None):
         """(oids:[str], read_oid:str=None)
@@ -254,7 +293,7 @@ class Connection(ConnectionBase):
                 continue
             if not obj._p_is_ghost():
                 self.invalid_oids.add(oid)
-            if obj._p_touched == self.sync_count:
+            if obj._p_serial == self.transaction_serial:
                 conflicts.append(oid)
         if conflicts:
             if read_oid is None:
@@ -268,43 +307,13 @@ class Connection(ConnectionBase):
         self.storage.pack()
 
 
-class _Ref(ref):
-
-    __slots__ = ['_obj']
-
-    def make_strong(self):
-        self._obj = self()
-
-    def make_weak(self):
-        self._obj = None
-
-
-class _HeapItem(object):
-
-    __slots__ = ['object']
-
-    def __init__(self, obj):
-        self.object = obj
-
-    def get_object(self):
-        return self.object
-
-    def __cmp__(self, other):
-        return cmp(self.object._p_touched, other.object._p_touched)
-
-
 class Cache(object):
 
     def __init__(self, size):
-        self.objects = {}
+        self.objects = WeakValueDictionary()
+        self.recent_objects = set()
         self.set_size(size)
         self.finger = 0
-        # When the cache target is exceeded, shrink identifies a set of
-        # non-ghost instances and converts the oldest "ghost_fraction"
-        # of them into ghosts.
-        # Higher values make cache size control more aggressive.
-        self.ghost_fraction = 0.5
-        assert 0 <= self.ghost_fraction <= 1
 
     def get_size(self):
         """Return the target size of the cache."""
@@ -319,71 +328,85 @@ class Cache(object):
             raise ValueError, 'cache target size must be > 0'
         self.size = size
 
+    def get_instance(self, oid, klass, connection):
+        """
+        This returns the existing object with the given oid, or else it makes
+        a new one with the given class and connection.
+
+        This method is called when unpickling a reference, which may happen at
+        a high frequency, so it needs to be fast.  For the sake of speed, it
+        inlines some statements that would normally be executed through calling
+        other functions.
+        """
+        # if self.get(oid) is not None: return self.get(oid)
+        objects = self.objects
+        obj = objects.get(oid)
+        if obj is None:
+            # Make a new ghost.
+            obj = klass.__new__(klass)
+            obj._p_oid = oid
+            obj._p_connection = connection
+            obj._p_status = -1 # obj._p_set_status_ghost()
+            objects[oid] = obj
+        return obj
+
     def get(self, oid):
-        weak_reference = self.objects.get(oid)
-        if weak_reference is None:
-            return None
-        else:
-            return weak_reference()
+        return self.objects.get(oid)
 
     def __setitem__(self, key, obj):
-        self.objects[key] = weak_reference = _Ref(obj)
-        # we want a strong reference until we decide to strink the cache
-        weak_reference.make_strong()
+        assert key not in self.objects or self.objects[key] is obj
+        self.objects[key] = obj
 
     def __delitem__(self, key):
-        del self.objects[key]
+        obj = self.objects.get(key)
+        if obj is not None:
+            self.recent_objects.discard(obj)
+            assert obj._p_oid is None
+            del self.objects[key]
 
-    def _get_heap(self, slice_size):
-        """(slice_size:int) -> [_HeapItem]
-        Examine slice_size items in self.objects.
-        Make every examined reference weak.
-        Remove oids of objects that have no other remaining references in memory.
-        Return a heap of _HeapItems of all of the remaining 
-        objects examined that are not ghosts.
+    def _build_heap(self, transaction_serial):
+        """(transaction_serial:int) -> [(serial, oid)]
         """
-        removed = []
-        start = self.finger % len(self.objects)
-        stop = start + slice_size
+        all = self.objects
+        heap_size_target = (len(all) - self.size) * 2
+        start = self.finger % len(all)
         heap = []
-        for oid in islice(chain(self.objects, self.objects), start, stop):
-            reference = self.objects[oid]
-            reference.make_weak()
-            obj = reference()
-            if obj is None:
-                removed.append(oid)
-            elif obj._p_is_saved():
-                heappush(heap, _HeapItem(obj))
-        # Remove dead references.
-        for oid in removed:
-            del self.objects[oid]
-        self.finger = stop - len(removed)
+        for oid in islice(chain(all, all), start, start + len(all)):
+            self.finger += 1
+            obj = all[oid]
+            if obj._p_serial == transaction_serial:
+                continue # obj is current.  Leave it alone.
+            heappush(heap, (obj._p_serial, oid))
+            if len(heap) >= heap_size_target:
+                break
+        self.finger = self.finger % len(all)
         return heap
 
-    def shrink(self):
-        """
+    def shrink(self, connection):
+        """(connection:Connection)
         Try to reduce the size of self.objects.
         """
         current = len(self.objects)
-        if current < self.size:
+        if current <= self.size:
             # No excess.
-            log(10, '[%s] cache %s', getpid(), current)
+            log(10, '[%s] cache size %s recent %s',
+                getpid(), current, len(self.recent_objects))
             return
         start_time = time()
-
-        slice_size = max(min(self.size - current, current / 4), current / 64)
-        heap = self._get_heap(slice_size)
-
-        num_ghosts = int(self.ghost_fraction * len(heap))
-
-        for j in xrange(num_ghosts):
-            obj = heappop(heap).get_object()
-            obj._p_set_status_ghost()
-        for item in heap:
-            self.objects[item.get_object()._p_oid].make_strong()
-        log(10, '[%s] shrink %fs removed %s ghosted %s'
-            ' size %s', getpid(), time() - start_time,
-            current - len(self.objects), num_ghosts, len(self.objects))
+        heap = self._build_heap(connection.get_transaction_serial())
+        num_ghosted = 0
+        while heap and len(self.objects) > self.size:
+            serial, oid = heappop(heap)
+            obj = self.objects.get(oid)
+            if obj is None:
+                continue
+            if obj._p_is_saved():
+                obj._p_set_status_ghost()
+                num_ghosted += 1
+            self.recent_objects.discard(obj)
+        log(10, '[%s] shrink %fs removed %s ghosted %s size %s recent %s',
+            getpid(), time() - start_time, current - len(self.objects),
+            num_ghosted, len(self.objects), len(self.recent_objects))
 
 
 def touch_every_reference(connection, *words):

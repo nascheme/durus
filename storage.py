@@ -66,6 +66,11 @@ class Storage(object):
         """
         return None
 
+    def bulk_load(self, oids):
+        """(oids:sequence(oid:str)) -> sequence(record:str)
+        """
+        for oid in oids:
+            yield self.load(oid)
 
 
 def gen_referring_oid_record(storage, referred_oid):

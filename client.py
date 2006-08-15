@@ -12,6 +12,7 @@ from durus.file_storage import FileStorage
 from durus.client_storage import ClientStorage
 from durus.connection import Connection
 from durus.storage_server import DEFAULT_PORT, DEFAULT_HOST, wait_for_server
+from durus.storage_server import SocketAddress
 from pprint import pprint
 
 def configure_readline(namespace, history_path):
@@ -34,9 +35,10 @@ def interactive_client(file, address, cache_size, readonly, repair,
         storage = FileStorage(file, readonly=readonly, repair=repair)
         description = file
     else:
-        wait_for_server(address=address)
-        storage = ClientStorage(address=address)
-        description = repr(address)
+        socket_address = SocketAddress.new(address)
+        wait_for_server(address=socket_address)
+        storage = ClientStorage(address=socket_address)
+        description = socket_address
     connection = Connection(storage, cache_size=cache_size)
     console_module = new.module('__console__')
     sys.modules['__console__'] = console_module
@@ -77,7 +79,7 @@ def client_main():
     parser.add_option(
         '--address', dest="address", default=None,
         help=(
-            "Address of the server. (default=%s)\n"
+            "Address of the server.\n"
             "If given, this is the path to a Unix domain socket for "
             "the server."))
     parser.add_option(

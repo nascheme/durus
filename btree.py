@@ -159,7 +159,7 @@ class BNode(Persistent):
         """
         def is_big(node):
             # Precondition for recursively calling node.delete(key).
-            return node and len(node.items) >= self.minimum_degree
+            return node and len(node.items) >= node.minimum_degree
         p = self.get_position(key)
         matches = p < len(self.items) and self.items[p][0] == key
         if self.is_leaf():
@@ -173,8 +173,6 @@ class BNode(Persistent):
             node = self.nodes[p]
             lower_sibling = p > 0 and self.nodes[p - 1]
             upper_sibling = p < len(self.nodes) - 1 and self.nodes[p + 1]
-            def is_big(n):
-                return n and len(n.items) >= n.minimum_degree
             if matches:
                 # Case 2.
                 if is_big(node):

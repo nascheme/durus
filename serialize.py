@@ -3,7 +3,6 @@ $Id$
 """
 
 import struct
-from sets import Set
 from cPickle import Pickler, Unpickler, loads
 from cStringIO import StringIO
 from durus.error import InvalidObjectReference
@@ -59,7 +58,7 @@ class ObjectWriter(object):
         self.pickler = Pickler(self.sio, 2)
         self.pickler.persistent_id = self._persistent_id
         self.objects_found = []
-        self.refs = Set() # populated by _persistent_id()
+        self.refs = set() # populated by _persistent_id()
         self.connection = connection
 
     def close(self):
@@ -118,17 +117,11 @@ class ObjectReader(object):
         self.connection = connection
 
     def _get_unpickler(self, file):
+        connection = self.connection
+        get_instance = connection.get_cache().get_instance
         def persistent_load(oid_klass):
             oid, klass = oid_klass
-            obj = self.connection.cache_get(oid)
-            if obj is None:
-                # Go ahead and make the ghost instance.
-                obj = klass.__new__(klass)
-                obj._p_oid = oid
-                obj._p_connection = self.connection
-                obj._p_set_status_ghost()
-                self.connection.cache_set(oid, obj)
-            return obj
+            return get_instance(oid, klass, connection)
         unpickler = Unpickler(file)
         unpickler.persistent_load = persistent_load
         return unpickler

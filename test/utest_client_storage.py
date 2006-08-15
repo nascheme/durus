@@ -4,12 +4,11 @@ $Id$
 """
 from durus import run_durus
 from durus.client_storage import ClientStorage
-from durus.error import ReadConflictError
+from durus.error import ReadConflictError, DurusKeyError
 from durus.serialize import pack_record
 from durus.utils import p64
 from popen2 import Popen4
 from sancho.utest import UTest, raises
-from sets import Set
 from time import sleep
 
 class Test (UTest):
@@ -31,8 +30,11 @@ class Test (UTest):
     def check_client_storage(self):
         b = ClientStorage(address=self.address)
         c = ClientStorage(address=self.address)
-        assert b.new_oid() == p64(1)
-        assert b.new_oid() == p64(2)
+        print self.address
+        oid = b.new_oid()
+        assert oid == p64(1), repr(oid)
+        oid = b.new_oid()
+        assert oid == p64(2), repr(oid)
         try:
             b.load(p64(0))
             assert 0
@@ -47,12 +49,17 @@ class Test (UTest):
         b.store(p64(1), pack_record(p64(1), 'no', ''))
         b.end()
         assert len(list(b.gen_oid_record())) == 2
+        records = b.bulk_load([p64(0), p64(1)])
+        assert len(list(records)) == 2
+        records = b.bulk_load([p64(0), p64(1), p64(2)])
+        raises(DurusKeyError, list, records)
         b.pack()
         assert len(list(b.gen_oid_record())) == 1
         raises(ReadConflictError, c.load, p64(0))
         raises(ReadConflictError, c.load, p64(0))
-        assert Set(c.sync()) == Set([p64(0), p64(1)])
+        assert set(c.sync()) == set([p64(0), p64(1)])
         assert record == c.load(p64(0))
+
 
 class UnixDomainSocketTest(Test):
 

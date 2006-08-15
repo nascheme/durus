@@ -2,26 +2,31 @@
 $URL$
 $Id$
 """
-
 from durus.utils import format_oid
+from sys import stderr
 
 # these must match the constants in _persistent.c
 UNSAVED = 1
 SAVED = 0
 GHOST = -1
 
+
 try:
-    from _persistent import PersistentBase, ConnectionBase
+    from durus._persistent import PersistentBase, ConnectionBase
     [ConnectionBase] # to silence the unused import checker
 except ImportError:
+    print >>stderr, 'Using Python base classes for persistence.'
 
     class ConnectionBase(object):
+        """
+        The faster implementation of this class is in _persistent.c.
+        """
 
-        __slots__ = ['sync_count']
+        __slots__ = ['transaction_serial']
 
         def __new__(klass, *args, **kwargs):
             instance = object.__new__(klass, *args, **kwargs)
-            instance.sync_count = 0
+            instance.transaction_serial = 1
             return instance
 
 
@@ -60,8 +65,8 @@ except ImportError:
             GHOST   -> UNSAVED
               this happens when you want to make changes to self.__dict__.
               The stored state is loaded during this state transition.
-          _p_touched: float
-            set on every access to _p_connection.sync_time
+          _p_serial: int
+            On every access, this attribute is set to self._p_connection.serial
             (if _p_connection is not None).
           _p_connection: durus.connection.Connection | None
             The Connection to the Storage that stores this instance.
@@ -71,12 +76,12 @@ except ImportError:
             The _p_oid is None when this instance has never been stored.
         """
 
-        __slots__ = ['_p_status', '_p_touched', '_p_connection', '_p_oid']
+        __slots__ = ['_p_status', '_p_serial', '_p_connection', '_p_oid']
 
         def __new__(klass, *args, **kwargs):
             instance = object.__new__(klass, *args, **kwargs)
             instance._p_status = UNSAVED
-            instance._p_touched = 0.0
+            instance._p_serial = 0
             instance._p_connection = None
             instance._p_oid = None
             return instance
@@ -86,15 +91,15 @@ except ImportError:
                 if self._p_status == GHOST:
                     self._p_load_state()
                 connection = self._p_connection
-                if connection is not None:
-                    self._p_touched = connection.sync_count
+                if (connection is not None and
+                    self._p_serial != connection.transaction_serial):
+                    connection.note_access(self)
             return object.__getattribute__(self, name)
 
         def __setattr__(self, name, value):
             if name[:3] != '_p_' and name not in _GHOST_SAFE_ATTRIBUTES:
                 self._p_note_change()
             object.__setattr__(self, name, value)
-
 
 
 class Persistent(PersistentBase):

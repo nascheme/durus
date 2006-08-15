@@ -1,13 +1,13 @@
-"""$URL$
+"""
+$URL$
 $Id$
 """
-
-import socket
-from durus.error import DurusKeyError, ProtocolError, ConflictError
-from durus.error import ReadConflictError
+from durus.error import DurusKeyError, ProtocolError
+from durus.error import ReadConflictError, ConflictError
 from durus.serialize import split_oids
 from durus.storage import Storage
 from durus.storage_server import DEFAULT_PORT, DEFAULT_HOST, recv
+from durus.storage_server import SocketAddress, StorageServer
 from durus.storage_server import STATUS_OKAY, STATUS_KEYERROR, STATUS_INVALID
 from durus.utils import p32, u32, p64, u64
 
@@ -15,30 +15,34 @@ from durus.utils import p32, u32, p64, u64
 class ClientStorage(Storage):
 
     def __init__(self, host=DEFAULT_HOST, port=DEFAULT_PORT, address=None):
-        if address is None:
-            self.address = (host, port)
-        else:
-            self.address = address
-        if type(self.address) is tuple:
-            address_family = socket.AF_INET
-        else:
-            address_family = socket.AF_UNIX
-        self.s = socket.socket(address_family, socket.SOCK_STREAM)
-        if address_family == socket.AF_INET:
-            self.s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        try:
-            self.s.connect(self.address)
-        except socket.error, exc:
-            raise socket.error, "%r %s" % (self.address, exc)
-        self.records = {}
+        self.address = SocketAddress.new(address or (host, port))
+        self.s = self.address.get_connected_socket()
+        assert self.s, "Could not connect to %s" % self.address
+        self.oid_pool = []
+        self.oid_pool_size = 32
+        self.begin()
+        protocol = StorageServer.protocol
+        assert len(protocol) == 4
+        self.s.sendall('V' + protocol)
+        server_protocol = recv(self.s, 4)
+        if server_protocol != protocol:
+            raise ProtocolError("Protocol version mismatch.")
 
     def new_oid(self):
-        self.s.sendall('N')
-        oid = recv(self.s, 8)
+        if not self.oid_pool:
+            batch = self.oid_pool_size
+            self.s.sendall('M%s' % chr(batch))
+            self.oid_pool = split_oids(recv(self.s, 8 * batch))
+            self.oid_pool.reverse()
+        oid = self.oid_pool.pop()
+        self.transaction_new_oids.append(oid)
         return oid
 
     def load(self, oid):
         self.s.sendall('L' + oid)
+        return self._get_load_response(oid)
+
+    def _get_load_response(self, oid):
         status = recv(self.s, 1)
         if status == STATUS_OKAY:
             pass
@@ -54,6 +58,7 @@ class ClientStorage(Storage):
 
     def begin(self):
         self.records = {}
+        self.transaction_new_oids = []
 
     def store(self, oid, record):
         assert len(oid) == 8
@@ -67,6 +72,9 @@ class ClientStorage(Storage):
             try:
                 handle_invalidations(split_oids(packed_oids))
             except ConflictError:
+                self.transaction_new_oids.reverse()
+                self.oid_pool.extend(self.transaction_new_oids)
+                self.begin() # clear out records and transaction_new_oids.
                 self.s.sendall(p32(0)) # Tell server we are done.
                 raise
         tdata = []
@@ -96,6 +104,13 @@ class ClientStorage(Storage):
         status = recv(self.s, 1)
         if status != STATUS_OKAY:
             raise ProtocolError, 'server returned invalid status %r' % status
+
+    def bulk_load(self, oids):
+        oid_str = ''.join(oids)
+        num_oids = len(oid_str) / 8
+        self.s.sendall('B' + p32(num_oids) + oid_str)
+        for oid in oids:
+            yield self._get_load_response(oid)
 
     def gen_oid_record(self):
         """() -> sequence([oid:str, record:str])

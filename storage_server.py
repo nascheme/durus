@@ -4,11 +4,13 @@ $Id$
 """
 from datetime import datetime
 from durus.logger import log, is_logging
-from durus.serialize import extract_class_name
+from durus.serialize import extract_class_name, split_oids
 from durus.utils import p32, u32, u64
-from os import unlink
+from grp import getgrnam, getgrgid
+from os import unlink, stat, chown, geteuid, getegid, umask
 from os.path import exists
-from sets import Set
+from pwd import getpwnam, getpwuid
+from time import sleep
 import errno
 import select
 import socket
@@ -26,7 +28,7 @@ DEFAULT_PORT = 2972
 def recv(s, n):
     """(s:socket, n:int) -> str
     Call the recv() method on the socket, repeating as required until n bytes
-    are received.  
+    are received.
     """
     data = []
     while n > 0:
@@ -42,12 +44,157 @@ class _Client:
     def __init__(self, s, addr):
         self.s = s
         self.addr = addr
-        self.invalid = Set()
+        self.invalid = set()
 
 class ClientError(Exception):
     pass
 
+
+class SocketAddress (object):
+
+    def new(address, **kwargs):
+        if isinstance(address, SocketAddress):
+            return address
+        elif type(address) is tuple:
+            host, port = address
+            return HostPortAddress(host=host, port=port)
+        elif type(address) is str:
+            return UnixDomainSocketAddress(address, **kwargs)
+        else:
+            raise ValueError(address)
+    new = staticmethod(new)
+
+    def get_listening_socket(self):
+        sock = socket.socket(self.get_address_family(), socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.bind_socket(sock)
+        sock.listen(40)
+        return sock
+
+class HostPortAddress (SocketAddress):
+
+    def __init__(self, host=DEFAULT_HOST, port=DEFAULT_PORT):
+        self.host = host
+        self.port = port
+
+    def __str__(self):
+        return "%s:%s" % (self.host, self.port)
+
+    def get_address_family(self):
+        return socket.AF_INET
+
+    def bind_socket(self, socket):
+        socket.bind( (self.host, self.port))
+
+    def get_connected_socket(self):
+        sock = socket.socket(self.get_address_family(), socket.SOCK_STREAM)
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        try:
+            sock.connect((self.host, self.port))
+        except socket.error, exc:
+            error = exc.args[0]
+            if error == errno.ECONNREFUSED:
+                return None
+            else:
+                raise
+        return sock
+
+    def set_connection_options(self, s):
+        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        s.settimeout(TIMEOUT)
+
+    def close(self, s):
+        s.close()
+
+class UnixDomainSocketAddress (SocketAddress):
+
+    def __init__(self, filename, owner=None, group=None, umask=None):
+        self.filename = filename
+        self.owner = owner
+        self.group = group
+        self.umask = umask
+
+    def __str__(self):
+        result = self.filename
+        if exists(self.filename):
+            filestat = stat(self.filename)
+            uid = filestat.st_uid
+            gid = filestat.st_gid
+            rwx = ['---', '--x', '-w-', '-wx', 'r--', 'r-x', 'rw-', 'rwx']
+            owner = getpwuid(uid).pw_name
+            group = getgrgid(gid).gr_name
+            result += ' (%s%s%s %s %s)' % (
+               rwx[filestat.st_mode >> 6 & 7],
+               rwx[filestat.st_mode >> 3 & 7],
+               rwx[filestat.st_mode & 7],
+               owner,
+               group)
+        return result
+
+    def get_address_family(self):
+        return socket.AF_UNIX
+
+    def bind_socket(self, s):
+        if self.umask is not None:
+            old_umask = umask(self.umask)
+        try:
+            s.bind(self.filename)
+        except socket.error, exc:
+            error = exc.args[0]
+            if not exists(self.filename):
+                raise
+            if stat(self.filename).st_size > 0:
+                raise
+            if error == errno.EADDRINUSE:
+                connected = self.get_connected_socket()
+                if connected:
+                    connected.close()
+                    raise
+                unlink(self.filename)
+                s.bind(self.filename)
+            else:
+                raise
+        uid = geteuid()
+        if self.owner is not None:
+            if type(self.owner) is int:
+                uid = self.owner
+            else:
+                uid = getpwnam(self.owner).pw_uid
+        gid = getegid()
+        if self.group is not None:
+            if type(self.group) is int:
+                gid = self.group
+            else:
+                gid = getgrnam(self.group).gr_gid
+        if self.owner is not None or self.group is not None:
+            chown(self.filename, uid, gid)
+        if self.umask is not None:
+            umask(old_umask)
+
+    def get_connected_socket(self):
+        sock = socket.socket(self.get_address_family(), socket.SOCK_STREAM)
+        try:
+            sock.connect(self.filename)
+        except socket.error, exc:
+            error = exc.args[0]
+            if error in (errno.ENOENT, errno.ENOTSOCK, errno.ECONNREFUSED):
+                return None
+            else:
+                raise
+        return sock
+
+    def set_connection_options(self, s):
+        s.settimeout(TIMEOUT)
+
+    def close(self, s):
+        s.close()
+        if exists(self.filename):
+            unlink(self.filename)
+
+
 class StorageServer:
+
+    protocol = p32(1)
 
     def __init__(self, storage, host=DEFAULT_HOST,
                  port=DEFAULT_PORT, address=None):
@@ -55,34 +202,13 @@ class StorageServer:
         self.clients = []
         self.sockets = []
         self.packer = None
-        if address is None:
-            self.address = (host, port)
-        else:
-            self.address = address
+        self.address = SocketAddress.new(address or (host, port))
         self.load_record = {}
 
     def serve(self):
-        if type(self.address) is tuple:
-            address_family = socket.AF_INET
-        else:
-            address_family = socket.AF_UNIX
-            if exists(self.address):
-                raise SystemExit(
-                    "%r already exists. "
-                    "Remove it or use a different address." % self.address)
-        sock = socket.socket(address_family, socket.SOCK_STREAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            sock.bind(self.address)
-        except socket.error, exc:
-            if exc.args[0] == errno.EADDRINUSE:
-                raise SystemExit(
-                    "Address %r is already in use by another process." %
-                    self.address)
-            else:
-                raise
-        sock.listen(40)
-        log(20, 'Ready with %s objects', self.storage.get_size())
+        sock = self.address.get_listening_socket()
+        log(20, 'Ready on %s with %s objects', self.address,
+            self.storage.get_size())
         self.sockets.append(sock)
         try:
             while 1:
@@ -95,10 +221,7 @@ class StorageServer:
                     if s is sock:
                         # new connection
                         conn, addr = s.accept()
-                        if address_family == socket.AF_INET:
-                            conn.setsockopt(
-                                socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-                        conn.settimeout(TIMEOUT)
+                        self.address.set_connection_options(conn)
                         self.clients.append(_Client(conn, addr))
                         self.sockets.append(conn)
                     else:
@@ -116,8 +239,7 @@ class StorageServer:
                         log(20, 'Pack finished at %s' % datetime.now())
                         self.packer = None # done packing
         finally:
-            if address_family == socket.AF_UNIX:
-                unlink(self.address)
+            self.address.close(sock)
 
     def handle(self, s):
         command_code = s.recv(1)
@@ -138,9 +260,18 @@ class StorageServer:
         # new OID
         s.sendall(self.storage.new_oid())
 
+    def handle_M(self, s):
+        # new OIDs
+        count = ord(recv(s, 1))
+        log(10, "oids: %s", count)
+        s.sendall(''.join([self.storage.new_oid() for j in xrange(count)]))
+
     def handle_L(self, s):
         # load
         oid = recv(s, 8)
+        self._send_load_response(s, oid)
+
+    def _send_load_response(self, s, oid):
         if oid in self._find_client(s).invalid:
             s.sendall(STATUS_INVALID)
         else:
@@ -218,34 +349,37 @@ class StorageServer:
             self.packer = self.storage.get_packer()
         s.sendall(STATUS_OKAY)
 
+    def handle_B(self, s):
+        # bulk read of objects
+        number_of_oids = u32(recv(s, 4))
+        oid_str = recv(s, 8 * number_of_oids)
+        oids = split_oids(oid_str)
+        for oid in oids:
+            self._send_load_response(s, oid)
+
     def handle_Q(self, s):
         # graceful quit
         log(20, 'Quit')
         raise SystemExit
 
+    def handle_V(self, s):
+        # Verify protocol version match.
+        client_protocol = recv(s, 4)
+        log(10, 'Client Protocol: %s', u32(client_protocol))
+        assert len(self.protocol) == 4
+        s.sendall(self.protocol)
+        if client_protocol != self.protocol:
+            raise ClientError("Protocol not supported.")
 
-def wait_for_server(host=DEFAULT_HOST, port=DEFAULT_PORT, maxtries=30, 
+def wait_for_server(host=DEFAULT_HOST, port=DEFAULT_PORT, maxtries=30,
     sleeptime=2, address=None):
     # Wait for the server to bind to the port.
-    import time
-    if address is None:
-        server_address = (host, port)
-    else:
-        server_address = address
-    if type(server_address) is tuple:
-        address_family = socket.AF_INET
-    else:
-        address_family = socket.AF_UNIX
+    server_address = SocketAddress.new(address or (host, port))
     for attempt in range(maxtries):
-        sock = socket.socket(address_family, socket.SOCK_STREAM)
-        try:
-            sock.connect(server_address)
-        except socket.error, e:
-            if e.args[0] not in (errno.ECONNREFUSED, errno.ENOENT):
-                raise
-            time.sleep(sleeptime)
-        else:
+        connected = server_address.get_connected_socket()
+        if connected:
+            connected.close()
             break
+        sleep(sleeptime)
     else:
         raise SystemExit('Timeout waiting for address.')
-    sock.close()

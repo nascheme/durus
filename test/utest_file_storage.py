@@ -2,11 +2,13 @@
 $URL$
 $Id$
 """
-from sancho.utest import UTest
-from durus.file_storage import TempFileStorage, FileStorage
 from durus.file_storage import FileStorage1, FileStorage2
+from durus.file_storage import TempFileStorage, FileStorage
 from durus.serialize import pack_record
 from durus.utils import p64
+from os import unlink
+from sancho.utest import UTest
+from tempfile import mktemp
 
 
 class Test (UTest):
@@ -60,6 +62,14 @@ class Test (UTest):
         filename = f.fp.name
         g = FileStorage(filename, readonly=True)
         h = FileStorage2(filename, readonly=True)
+
+    def check_open_empty(self):
+        name = mktemp()
+        f = open(name, 'w')
+        f.close()
+        s = FileStorage(name)
+        s.close()
+        unlink(name)
 
 
 
