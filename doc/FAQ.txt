@@ -36,8 +36,8 @@ Q:
 A:
     Durus Connections using ClientStorage should be safe to use in multiple 
     threads in the same process as long as no individual Connection or 
-    ClientStorage instance or any of the Persistent instances obtained from 
-    that Connection are accessed from more than one thread.
+    ClientStorage instance or any of the PersistentObject instances obtained 
+    from that Connection are accessed from more than one thread.
     
     Our applications use multiple processes when they need multiple threads 
     of control.
@@ -90,7 +90,7 @@ Q:
 
 A:
     If, in the period since the last time client A called ``commit()``/``abort()``,
-    client A has accessed an attribute of a Persistent instance X and 
+    client A has accessed an attribute of a PersistentObject instance X and 
     some other client has also committed changes to X, then a ``ConflictError``
     exception will be raised when client A tries to commit any changes.
     This prevents client A from committing changes that are based on out-of-date
@@ -181,7 +181,7 @@ A:
 
 
 Q:
-    I want to rename a module that includes a Persistent subclass.  
+    I want to rename a module that includes a PersistentObject subclass.  
     How do I update the database?
 
 A:

@@ -56,10 +56,8 @@ def interactive_client(file, address, cache_size, readonly, repair,
     console = InteractiveConsole(vars(console_module))
     if startup:
         console.runsource('execfile("%s")' % os.path.expanduser(startup))
-    help = ('    connection -> the connection\n'
-            '    root       -> get(0)\n'
-            '    get(oid)   -> get an object\n'
-            '    pp(object) -> pretty-print')
+    help = ('    connection -> the Connection\n'
+            '    root       -> the root instance')
     console.interact('Durus %s\n%s' % (description, help))
 
 def client_main():

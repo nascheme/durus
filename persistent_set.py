@@ -2,9 +2,11 @@
 $URL$
 $Id$
 """
-from durus.persistent import Persistent
+from durus.persistent import PersistentObject
 
-class PersistentSet (Persistent):
+class PersistentSet (PersistentObject):
+
+    __slots__ = ['s']
 
     s_is = set
 
@@ -155,3 +157,4 @@ class PersistentSet (Persistent):
     symmetric_difference_update = __ixor__
     union = __or__
     update = __ior__
+

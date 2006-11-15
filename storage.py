@@ -1,11 +1,13 @@
-"""$URL$
+"""
+$URL$
 $Id$
 """
-
+from collections import deque
 from durus.serialize import unpack_record, split_oids, extract_class_name
 from durus.utils import p64
+import durus.connection
 
-class Storage(object):
+class Storage (object):
     """
     This is the interface that Connection requires for Storage.
     """
@@ -14,12 +16,14 @@ class Storage(object):
 
     def load(self, oid):
         """Return the record for this oid.
+        Raises a KeyError if there is no such record.
+        May also raise a ReadConflictError.
         """
         raise NotImplementedError
 
     def begin(self):
         """
-        Begin a commit.  
+        Begin a commit.
         """
         raise NotImplementedError
 
@@ -28,17 +32,14 @@ class Storage(object):
         raise NotImplementedError
 
     def end(self, handle_invalidations=None):
-        """Conclude a commit."""
+        """Conclude a commit.
+        This may raise a ConflictError.
+        """
         raise NotImplementedError
 
     def sync(self):
         """() -> [oid:str]
         Return a list of oids that should be invalidated.
-        """
-        raise NotImplementedError
-
-    def gen_oid_record(self):
-        """() -> sequence([oid:str, record:str])
         """
         raise NotImplementedError
 
@@ -49,16 +50,21 @@ class Storage(object):
         """
         raise NotImplementedError
 
+    def close(self):
+        """Clean up as needed.
+        """
+
     def get_packer(self):
         """
-        Return an incremental packer (a generator).
+        Return an incremental packer (a generator), or None if this storage
+        does not support incremental packing.
         Used by StorageServer.
         """
-        raise NotImplementedError
+        return None
 
     def pack(self):
-        """Remove obsolete records from the storage."""
-        raise NotImplementedError
+        """If this storage supports it, remove obsolete records."""
+        return None
 
     def get_size(self):
         """() -> int | None
@@ -71,6 +77,38 @@ class Storage(object):
         """
         for oid in oids:
             yield self.load(oid)
+
+    def gen_oid_record(self, start_oid=None, batch_size=100):
+        """(start_oid:str = None, batch_size:int = 100) ->
+            sequence((oid:str, record:str))
+        Returns a generator for the sequence of (oid, record) pairs.
+
+        If a start_oid is given, the resulting sequence follows a
+        breadth-first traversal of the object graph, starting at the given
+        start_oid.  This uses the storage's bulk_load() method because that
+        is faster in some cases.  The batch_size argument sets the number
+        of object records loaded on each call to bulk_load().
+
+        If no start_oid is given, the sequence may include oids and records
+        that are not reachable from the root.
+        """
+        if start_oid is None:
+            start_oid = durus.connection.ROOT_OID
+        todo = deque([start_oid])
+        seen = set()
+        while todo:
+            batch = []
+            while todo and len(batch) < batch_size:
+                oid = todo.popleft()
+                if oid not in seen:
+                    batch.append(oid)
+                    seen.add(oid)
+            for record in self.bulk_load(batch):
+                oid, data, refdata = unpack_record(record)
+                yield oid, record
+                for ref in split_oids(refdata):
+                    if ref not in seen:
+                        todo.append(ref)
 
 
 def gen_referring_oid_record(storage, referred_oid):
@@ -121,7 +159,7 @@ class MemoryStorage (Storage):
     def __init__(self):
         self.records = {}
         self.transaction = None
-        self.oid = 0
+        self.oid = -1
 
     def new_oid(self):
         self.oid += 1
@@ -143,6 +181,3 @@ class MemoryStorage (Storage):
     def sync(self):
         return []
 
-    def gen_oid_record(self):
-        for oid, record in self.records.iteritems():
-            yield oid, record

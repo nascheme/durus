@@ -4,11 +4,16 @@ $Id$
 """
 from durus.btree import BTree, BNode
 from durus.connection import Connection
-from durus.file_storage import TempFileStorage
+from durus.storage import MemoryStorage
 from random import randint
 from sancho.utest import UTest, raises
 
 class CoverageTest(UTest):
+
+    def no_arbitrary_attributes(self):
+        bt = BTree()
+        raises(AttributeError, setattr, bt, 'bogus', 1)
+        raises(AttributeError, setattr, bt.root, 'bogus', 1)
 
     def delete_case_1(self):
         bt = BTree()
@@ -89,8 +94,8 @@ class CoverageTest(UTest):
 
     def find_extremes(self):
         bt = BTree()
-        assert raises(AssertionError, bt.get_min_item)
-        assert raises(AssertionError, bt.get_max_item)
+        raises(AssertionError, bt.get_min_item)
+        raises(AssertionError, bt.get_max_item)
         map(bt.add, range(100))
         assert bt.get_min_item() == (0, True)
         assert bt.get_max_item() == (99, True)
@@ -188,6 +193,25 @@ class CoverageTest(UTest):
         assert not bt.has_key(2)
         assert bt.keys() == []
 
+    def update(self):
+        bt = BTree()
+        bt.update()
+        assert not bt.items()
+        bt.update(a=1)
+        assert bt.items() == [('a', 1)]
+        bt = BTree()
+        bt.update(dict(b=2), a=1)
+        assert len(bt.items()) == 2
+        assert bt['b'] == 2
+        assert bt['a'] == 1
+        bt = BTree()
+        bt.update([('b', 2)], a=1)
+        assert len(bt.items()) == 2
+        assert bt['b'] == 2
+        assert bt['a'] == 1
+
+
+
 class SlowTest(UTest):
 
     def slow(self):
@@ -222,7 +246,7 @@ class SlowTest(UTest):
 class DurusTest(UTest):
 
     def _pre(self):
-        self.connection = Connection(TempFileStorage())
+        self.connection = Connection(MemoryStorage())
 
     def _post(self):
         del self.connection
@@ -238,7 +262,7 @@ class DurusTest(UTest):
         bt.add(2 * t - 1)
         self.connection.commit()
         assert self.connection.get_cache_count() == 5
-
+        bt.note_change_of_bnode_containing_key(1)
 
 if __name__ == '__main__':
     CoverageTest()

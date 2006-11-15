@@ -1,26 +1,28 @@
-"""$URL$
+"""
+$URL$
 $Id$
 """
 
 from copy import copy
-from durus.persistent import Persistent
+from durus.persistent import PersistentObject
 
-class PersistentDict(Persistent):
-
+class PersistentDict (PersistentObject):
     """
     Instance attributes:
       data : dict
     """
+    __slots__ = ['data']
+
     data_is = dict
 
     def __init__(self, *args, **kwargs):
         self.data = dict(*args, **kwargs)
 
-    def __cmp__(self, dict):
-        if isinstance(dict, PersistentDict):
-            return cmp(self.data, dict.data)
+    def __cmp__(self, other):
+        if isinstance(other, PersistentDict):
+            return cmp(self.data, other.data)
         else:
-            return cmp(self.data, dict)
+            return cmp(self.data, other)
 
     def __len__(self):
         return len(self.data)
@@ -41,20 +43,9 @@ class PersistentDict(Persistent):
         self.data.clear()
 
     def copy(self):
-        if self.__class__ is PersistentDict:
-            return PersistentDict(self.data)
-        # Use the copy module to copy self without data, and then use the
-        # update method to fill the data in the new instance.
-        changed = self.get_p_changed()
-        data = self.data
-        try:
-            self.data = {} # This is why we saved _p_changed.
-            c = copy(self)
-        finally:
-            self.data = data
-            self._p_note_change(changed)
-        c.update(self)
-        return c
+        result = copy(self)
+        result.data = self.data.copy()
+        return result
 
     def keys(self):
         return self.data.keys()
@@ -77,15 +68,24 @@ class PersistentDict(Persistent):
     def has_key(self, key):
         return self.data.has_key(key)
 
-    def update(self, other):
+    def update(self, *others, **kwargs):
         self._p_note_change()
-        if isinstance(other, PersistentDict):
-            self.data.update(other.data)
-        elif isinstance(other, dict):
-            self.data.update(other)
-        else:
-            for k, v in dict.items():
-                self[k] = v
+        if len(others) > 1:
+            raise TypeError("update() expected at most 1 argument")
+        elif others:
+            other = others[0]
+            if isinstance(other, PersistentDict):
+                self.data.update(other.data)
+            elif isinstance(other, dict):
+                self.data.update(other)
+            elif hasattr(other, 'keys'):
+                for k in other.keys():
+                    self[k] = other[k]
+            else:
+                for k, v in other:
+                    self[k] = v
+        for kw in kwargs:
+            self[kw] = kwargs[kw]
 
     def get(self, key, failobj=None):
         return self.data.get(key, failobj)
@@ -117,4 +117,5 @@ class PersistentDict(Persistent):
 
     def __iter__(self):
         return iter(self.data)
+
 

@@ -5,12 +5,12 @@ $Id$
 from cPickle import dumps, loads
 from durus.connection import Connection
 from durus.file_storage import TempFileStorage
-from durus.persistent import Persistent
+from durus.persistent import Persistent, PersistentObject
 from durus.utils import p64
-from sancho.utest import UTest
+from sancho.utest import UTest, raises
+import sys
 
-
-class Test (UTest):
+class TestPersistent (UTest):
 
     def check_getstate(self):
         p=Persistent()
@@ -42,16 +42,13 @@ class Test (UTest):
         storage = TempFileStorage()
         connection = Connection(storage)
         root=connection.get_root()
-        assert root._p_is_ghost()
-        root.a = 1
+        assert not root._p_is_ghost()
+        root['a'] = 1
         assert root._p_is_unsaved()
-        del root.a
+        del root['a']
         connection.abort()
         assert root._p_is_ghost()
-        try:
-            root.a
-            assert 0
-        except AttributeError: pass
+        raises(AttributeError, getattr, root, 'a')
         root._p_set_status_saved()
         assert root._p_is_saved()
         root._p_set_status_unsaved()
@@ -62,9 +59,106 @@ class Test (UTest):
 
     def pickling(self):
         a = Persistent()
-        pickle_a = dumps(a, 2) # Pickle protocol 2 is required.
+        pickle_a = dumps(a, 2)
         b = loads(pickle_a)
         assert isinstance(b, Persistent)
 
+    def lowlevelops(self):
+        from durus.persistent import _getattribute, _setattribute
+        from durus.persistent import _delattribute, _hasattribute
+        storage = TempFileStorage()
+        connection = Connection(storage)
+        root = connection.get_root()
+        root._p_set_status_ghost()
+        assert not _hasattribute(root, 'data')
+        root._p_set_status_ghost()
+        raises(AttributeError, _getattribute, root, 'data')
+        assert root._p_is_ghost()
+        _setattribute(root, 'data', 'bogus')
+        assert root._p_is_ghost()
+        _delattribute(root, 'data')
+        assert root._p_is_ghost()
+
+class TestPersistentObject (UTest):
+
+    def check_getstate(self):
+        p=PersistentObject()
+        assert p.__getstate__() == {}
+        raises(AttributeError, setattr, p, 'a', 1)
+
+    def check_setstate(self):
+        p=PersistentObject()
+        p.__setstate__({})
+        raises(AttributeError, p.__setstate__, {'a':1})
+
+    def check_change(self):
+        p=PersistentObject()
+        p._p_changed == 0
+        p._p_note_change()
+        assert p._p_changed == True
+
+    def check_accessors(self):
+        p=PersistentObject()
+        p._p_oid
+        assert p._p_format_oid() == 'None'
+        p._p_oid = p64(1)
+        assert p._p_format_oid() == '1'
+        assert repr(p) == "<PersistentObject 1>"
+
+    def pickling(self):
+        a = PersistentObject()
+        pickle_a = dumps(a, 2)
+        b = loads(pickle_a)
+        assert isinstance(b, PersistentObject)
+
+class SlottedPersistentObject (PersistentObject):
+
+    __slots__ = ['a', 'b']
+
+class SlottedPersistentObjectWithDict (PersistentObject):
+
+    __slots__ = ['a', 'b', '__dict__']
+
+main = sys.modules['__main__']
+main.SlottedPersistentObject = SlottedPersistentObject
+main.SlottedPersistentObjectWithDict = SlottedPersistentObjectWithDict
+
+class TestSlottedPersistentObject (UTest):
+
+    def a(self):
+        p = SlottedPersistentObject()
+        assert p.__getstate__() == {}
+        p.a = 1
+        assert p.__getstate__() == dict(a=1)
+        raises(AttributeError, setattr, p, 'c', 2)
+
+    def pickling(self):
+        a = SlottedPersistentObject()
+        pickle_a = dumps(a, 2)
+        b = loads(pickle_a)
+        assert isinstance(b, SlottedPersistentObject)
+
+class TestSlottedPersistentObjectWithDict (UTest):
+
+    def a(self):
+        p = SlottedPersistentObjectWithDict()
+        assert p.__getstate__() == {}
+        p.a = 1
+        assert p.__getstate__() == dict(a=1)
+        p.c = 2
+        assert p.__getstate__() == dict(a=1, c=2)
+        assert p.__dict__ == dict(c=2)
+
+    def pickling(self):
+        a = SlottedPersistentObjectWithDict()
+        pickle_a = dumps(a, 2)
+        b = loads(pickle_a)
+        assert isinstance(b, SlottedPersistentObjectWithDict)
+
+
 if __name__ == "__main__":
-    Test()
+    TestPersistent()
+    TestPersistentObject()
+    TestSlottedPersistentObject()
+    TestSlottedPersistentObjectWithDict()
+

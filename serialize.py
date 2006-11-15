@@ -1,16 +1,16 @@
-"""$URL$
+"""
+$URL$
 $Id$
 """
-
 import struct
 from cPickle import Pickler, Unpickler, loads
 from cStringIO import StringIO
-from durus.error import InvalidObjectReference
-from durus.persistent import Persistent
+from durus.persistent import PersistentObject
 from durus.utils import p32, u32
 from zlib import compress, decompress, error as zlib_error
 
 WRITE_COMPRESSED_STATE_PICKLES = True
+PICKLE_PROTOCOL = 2
 
 def pack_record(oid, data, refs):
     """(oid:str, data:str, refs:str) -> record:str
@@ -44,7 +44,7 @@ def extract_class_name(record):
     class_name = state.split('\n', 2)[1]
     return class_name
 
-class ObjectWriter(object):
+class ObjectWriter (object):
     """
     Serializes objects for storage in the database.
 
@@ -55,7 +55,7 @@ class ObjectWriter(object):
 
     def __init__(self, connection):
         self.sio = StringIO()
-        self.pickler = Pickler(self.sio, 2)
+        self.pickler = Pickler(self.sio, PICKLE_PROTOCOL)
         self.pickler.persistent_id = self._persistent_id
         self.objects_found = []
         self.refs = set() # populated by _persistent_id()
@@ -73,14 +73,15 @@ class ObjectWriter(object):
         is persistent. If the obj is persistent, it returns the oid and type,
         otherwise it returns None.
         """
-        if not isinstance(obj, Persistent):
+        if not isinstance(obj, PersistentObject):
             return None
         if obj._p_oid is None:
             obj._p_oid = self.connection.new_oid()
             obj._p_connection = self.connection
             self.objects_found.append(obj)
         elif obj._p_connection is not self.connection:
-            raise InvalidObjectReference(obj, self.connection)
+            raise ValueError(
+                "Reference to %r has a different connection." % obj)
         self.refs.add(obj._p_oid)
         return obj._p_oid, type(obj)
 
@@ -111,7 +112,7 @@ class ObjectWriter(object):
         self.refs.discard(obj._p_oid)
         return data, ''.join(self.refs)
 
-class ObjectReader(object):
+class ObjectReader (object):
 
     def __init__(self, connection):
         self.connection = connection

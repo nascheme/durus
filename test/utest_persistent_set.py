@@ -40,7 +40,7 @@ class SetTest (UTest):
         s1 = set_type()
         s2 = other_type()
         if set_type != other_type:
-            raises(TypeError, s1.__eq__, s2)
+            assert not s1.__eq__(s2)
             return
         assert s1 == s2
         assert s1.__eq__(s2)
@@ -55,7 +55,7 @@ class SetTest (UTest):
         s1 = set_type()
         s2 = other_type()
         if set_type != other_type:
-            raises(TypeError, s1.__ge__, s2)
+            assert raises(TypeError, s1.__ge__, s2)
             return
         assert s1 >= s2
         s2 = other_type(['k'])
@@ -73,7 +73,7 @@ class SetTest (UTest):
         s1 = set_type()
         s2 = other_type()
         if set_type != other_type:
-            raises(TypeError, s1.__gt__, s2)
+            assert raises(TypeError, s1.__gt__, s2)
             return
         assert not (s1 > s2)
         s2 = other_type(['k'])
@@ -86,10 +86,6 @@ class SetTest (UTest):
         s2 = other_type(['j', 'k'])
         assert not (s1 > s2)
         assert s2 > s1
-
-    def test__hash__(self):
-        s1 = set_type()
-        raises(TypeError, s1.__hash__)
 
     def test__iand__(self):
         s1 = set_type()
@@ -153,7 +149,7 @@ class SetTest (UTest):
         s1 = set_type()
         s2 = other_type()
         if set_type != other_type:
-            raises(TypeError, s1.__le__, s2)
+            assert raises(TypeError, s1.__le__, s2)
             return
         assert s1 <= s2
         s2 = other_type(['k'])
@@ -178,7 +174,7 @@ class SetTest (UTest):
         s1 = set_type()
         s2 = other_type()
         if set_type != other_type:
-            raises(TypeError, s1.__lt__, s2)
+            assert raises(TypeError, s1.__lt__, s2)
             return
         assert not (s1 < s2)
         s2 = other_type(['k'])
@@ -195,7 +191,7 @@ class SetTest (UTest):
         s1 = set_type()
         s2 = other_type()
         if set_type != other_type:
-            raises(TypeError, s1.__ne__, s2)
+            assert s1.__ne__(s2)
             return
         assert not s1.__ne__(s2)
         s3 = set_type('a')

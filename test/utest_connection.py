@@ -5,11 +5,11 @@ $Id$
 from durus import run_durus
 from durus.client_storage import ClientStorage
 from durus.connection import Connection, touch_every_reference
-from durus.error import ConflictError
-from durus.file_storage import TempFileStorage
+from durus.connection import ObjectDictionary
+from durus.error import ConflictError, WriteConflictError
 from durus.persistent import Persistent, PersistentBase
 from durus.persistent import ConnectionBase
-from durus.storage import get_reference_index, get_census
+from durus.storage import get_reference_index, get_census, MemoryStorage
 from durus.storage import gen_referring_oid_record, Storage
 from durus.utils import p64
 from popen2 import Popen4
@@ -20,19 +20,19 @@ import sys
 class TestConnection (UTest):
 
     def _get_storage(self):
-        return TempFileStorage()
+        return MemoryStorage()
 
     def check_connection(self):
         self.conn=conn=Connection(self._get_storage())
         self.root=root=conn.get_root()
-        assert root._p_is_ghost() == True
+        assert root._p_is_ghost() == False
         assert root is conn.get(p64(0))
         assert root is conn.get(0)
         assert conn is root._p_connection
         assert conn.get(p64(1)) == None
         conn.abort()
         conn.commit()
-        assert root._p_is_ghost() == True
+        assert root._p_is_ghost() == False
         root['a'] = Persistent()
         assert root._p_is_unsaved() == True
         assert root['a']._p_is_unsaved() == True
@@ -99,8 +99,8 @@ class TestConnection (UTest):
         raises(NotImplementedError, s.store, None, None)
         raises(NotImplementedError, s.end)
         raises(NotImplementedError, s.sync)
-        raises(NotImplementedError, s.gen_oid_record)
-
+        g = s.gen_oid_record()
+        raises(NotImplementedError, g.next)
 
     def check_touch_every_reference(self):
         connection = Connection(self._get_storage())
@@ -115,6 +115,11 @@ class TestConnection (UTest):
         assert root['b'].c._p_is_unsaved()
         assert not root._p_is_unsaved()
 
+    def check_alternative_root(self):
+        connection = Connection(self._get_storage(), root_class=Persistent)
+        root = connection.get_root()
+        assert isinstance(root, Persistent)
+        connection2 = Connection(connection.storage, root_class=None)
 
 class TestConnectionClientStorage (TestConnection):
 
@@ -125,7 +130,7 @@ class TestConnectionClientStorage (TestConnection):
         self.port = 9123
         self.server = Popen4('python %s --port=%s' % (
             run_durus.__file__, self.port))
-        sleep(3) # wait for bind
+        sleep(2) # wait for bind
 
     def _post(self):
         run_durus.stop_durus(("", self.port))
@@ -137,6 +142,10 @@ class TestConnectionClientStorage (TestConnection):
         rootb['b'] = Persistent()
         rootc = c.get(p64(0))
         rootc['c'] = Persistent()
+        print rootb
+        print rootb['b']
+        print rootc
+        print rootc['c']
         c.commit()
         raises(ConflictError, b.commit)
         raises(KeyError, rootb.__getitem__, 'c')
@@ -165,12 +174,12 @@ class TestConnectionClientStorage (TestConnection):
         # c1 has not accessed an attribute of A since
         # the last c1.commit(), so we don't want a ConflictError.
         c1.commit()
-        assert not c1.get_root()['A']._p_is_ghost()
+        assert c1.get_root()['A']._p_is_ghost()
         c1.get_root()['A'].a # accessed!
         c1.get_root()['B'].b = 1
         c2.get_root()['A'].a = 2
         c2.commit()
-        raises(ConflictError, c1.commit)
+        raises(WriteConflictError, c1.commit)
 
     def _scenario(self):
         c1 = Connection(self._get_storage())
@@ -236,7 +245,51 @@ class TestConnectionClientStorage (TestConnection):
         after = refs()
         assert after - before == 0, after - before
 
+class TestObjectDictionary (UTest):
+
+    def a(self):
+        d = ObjectDictionary()
+        assert len(d) == 0
+        key = 'ok'
+        x = Persistent()
+        x.key = key
+        d[key] = x
+        assert d.get(key) is not None
+        assert len(d) == 1
+        assert list(d) == [key]
+        assert key in d
+        x = 1
+        assert len(d) == 0
+        assert d.get(key) is None
+        assert list(d) == []
+
+    def b(self):
+        d = ObjectDictionary()
+        assert len(d) == 0
+        key = 'ok'
+        x = Persistent()
+        x.key = key
+        d[key] = x
+        assert d.get(key) is not None
+        assert len(d) == 1
+        assert list(d) == [key]
+        del d[key]
+        assert len(d) == 0
+        assert d.get(key) is None
+        assert list(d) == []
+
+    def call_callback(self):
+        d = ObjectDictionary()
+        assert len(d) == 0
+        key = 'ok'
+        x = Persistent()
+        x.key = key
+        d[key] = x
+        d.callback(x)
+        assert key in d.dead
+        assert key in d.mapping
 
 if __name__ == "__main__":
     TestConnection()
     TestConnectionClientStorage()
+    TestObjectDictionary()

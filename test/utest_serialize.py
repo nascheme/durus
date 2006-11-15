@@ -3,11 +3,10 @@ $URL$
 $Id$
 """
 from durus.connection import ROOT_OID
-from durus.error import InvalidObjectReference
 from durus.persistent import Persistent, ConnectionBase
 from durus.serialize import ObjectWriter, ObjectReader, pack_record
 from durus.serialize import unpack_record, split_oids
-from sancho.utest import UTest
+from sancho.utest import UTest, raises
 
 
 class Test (UTest):
@@ -27,10 +26,7 @@ class Test (UTest):
         assert s._persistent_id(x) == (ROOT_OID, Persistent)
         x._p_connection = FakeConnection()
         # connection of x no longer matches connection of s.
-        try:
-            s._persistent_id(x)
-            assert 0
-        except InvalidObjectReference: pass
+        raises(ValueError, s._persistent_id, x)
         x.a = Persistent()
         assert s.get_state(x), (
             '\x80\x02cdurus.persistent\nPersistent\nq\x01.\x80\x02}q\x02U'
@@ -38,10 +34,7 @@ class Test (UTest):
             '\x00\x00\x00\x00\x00\x00\x00\x00')
         assert list(s.gen_new_objects(x)) == [x, x.a]
         # gen_new_objects() can only be called once.
-        try:
-            s.gen_new_objects(3)
-            assert 0
-        except RuntimeError: pass
+        raises(RuntimeError, s.gen_new_objects, 3)
         s.close()
 
     def check_object_reader(self):

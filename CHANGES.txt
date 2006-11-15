@@ -1,3 +1,144 @@
+3.6: (2006-11-15):
+
+    * Add support for persistent instances that use slots for state data.
+      Separate the Persistent class implementation into two classes, so
+      that Persistent inherits from a new class named 'PersistentObject'.
+      The PersistentObject defines a __slots__ value without including
+      '__dict__', so it is possible to have PersistentObject instances
+      that don't have '__dict__' values, which can reduce the amount of
+      RAM required to hold those instances.
+
+      Use PersistentObject instead of Persistent as the base class for
+      ComputedAttribute, PersistentDict, PersistentList, PersistentSet,
+      BTree, and BNode and define __slots__ on these classes for the 
+      attributes that they actually use.  This means that instances
+      that have any of these as the __class__ will no longer support
+      arbitrary attribute names.  For subclasses of any of these classes,
+      arbitrary attribute names are still be supported.
+
+    * Change __setstate__() so that it clears the existing state before
+      setting the new state.  __setstate__({}) or __setstate__(None) is
+      expected to clear the data attributes of any persistent instance.
+
+    * Add support a "root_class" keyword arg to the Connection constructor.
+      Make the root as an instance of this class (or PersistentDict if the
+      root_class value is None).
+      If the root_class value is given, verify that it really is the class
+      of the root instance.
+
+    * When making a new root instance, obtain the oid from the storage as
+      you would for any persistent instance.  The first call to
+      Storage.new_oid() must now return the expected ROOT_OID.
+
+      This establishes the invariant that every oid of a valid record that a
+      Storage is asked to store has an existing record or else it has been
+      returned by a call to the new_oid() method.
+
+    * When handling invalidations, immediately make ghosts of loaded instances that
+      have not already been accessed during this transaction.  Previously, the
+      oids of these objects were just saved in the invalid_oids set, and this
+      could lead to an AssertionError if commit() is called before abort().
+
+    * Hold a hard reference to the root instance to keep it in the cache. 
+
+    * Move PICKLE_PROTOCOL to a global constant in the serialize module.
+
+    * Add some low-level attribute-manipulation methods to the persistent
+      module.  These allow attribute manipulation that does not trigger
+      changes in the persistent state, even when using the C-implementation
+      of PersistentBase.
+
+    * Update HistoryConnection.  Don't depend on the existence of a __dict__
+      to signal that an object exists in the current transaction.
+
+    * Call _p_set_status_unsaved() in _p_note_change() instead of doing the
+      same thing in-line.  This allows subclasses that override 
+      _p_set_status_unsaved() to have those calls happen on every (normal)
+      transition to the unsaved state.
+
+    * Use a deque in gen_oid_storage so that we can call popleft()
+      instead of pop(0).
+
+    * When a start_oid is provided as an argument to gen_oid_record(),
+      it now yields (oid, record) pairs for objects that are reachable
+      from the given start record.
+      Consequently, this code can be shared by the FileStorage pack
+      and the Connection crawler methods.
+
+    * Make WriteConflictError a separate class, so that read and write
+      conflicts can be explicitly distinguished.  
+      When attempts to read or or commit are made after a conflict has
+      been raised, but before abort() has been called, raise an
+      AssertionError instead of a new ConflictError.
+
+    * Add ObjectDictionary class, used for holding the references in the cache.
+      This is like a WeakValueDictionary, except that the actual deleting of
+      oids is delayed until the next time there is an iteration, which is for
+      us at the time of the next call to shrink().
+
+    * Add BTree.note_change_of_bnode_containing_key() so that code managing
+      BTrees of non-persistent containers can be easier to understand.
+
+    * Change Connection.get() so that, when it pulls an object record from 
+      storage, it goes ahead and loads the object state.  The idea is that
+      calls to get() will almost always be followed by attribute accesses
+      on the returned object, so we should avoid the need to retrieve the
+      object record again.  Note that all Connections use get() to retrieve
+      the root instance.  This change means that the root state is loaded
+      immediately.
+
+    * Avoid potential KeyError when a reference has died but the key
+      has not yet been removed from the WeakValueDictionary.
+
+    * Change wait_for_server so that maxtries can be bigger than maxint.
+
+    * Add BTree.update().
+
+    * Make default get_packer() return None instead of raising 
+      NotImplementedError.
+
+    * Pass a handle_invalidations argument to self.storage.end().
+      If there is not an incremental packer, call the non-incremental one.
+
+    * Track unused allocated oids for each client.  Make sure that records 
+      submitted by one client do not use oids that have been allocated, but
+      not used, by another client.
+
+    * Add support for the storage server to use a Storage that may
+      report invalidations.
+
+    * Add command line options that allow starting a server that is a client
+      of another server.
+
+    * Remove the FileStorage format conversion script.
+    
+    * Remove support for FileStorage1 format.
+
+    * Change FileStorage.sync() so that, on the first call after a pack, it
+      returns the list of oids removed by the pack.
+
+    * Improve error message shown if run_durus.py fails.
+
+    * Run socket output through a sendall() function, just as input goes
+      through a recv() function.  
+      Add a TRACE global.  If TRACE is true, the socket traffic is
+      printed to stdout.
+      Treat IOError like ClientError.
+
+    * Add unit tests for PersistentList and PersistentDict.
+    
+    * Make PersistentDict.update() work with a variety of argument patterns,
+      like dict.update().
+      
+    * Revise implementation of PersistentDict.copy().
+
+    * Make sure that the client does not wait for reply status in the unlikely
+      event that it has requested to commit an empty transaction.
+
+    * Remove InvalidObjectReferenceError.  Just use ValueError.
+    
+    * Add a default Storage.close() method.
+    
 3.5: (2006-08-16):
 
     * Fix a bug introduced in version 3.4 that could, under certain conditions,

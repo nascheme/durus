@@ -3,12 +3,11 @@ $URL$
 $Id$
 """
 from cPickle import dumps, loads
-from durus.connection import ROOT_OID
-from durus.serialize import split_oids, unpack_record
 from durus.storage import Storage
 from durus.utils import p32, u32, p64, u64
 from tempfile import NamedTemporaryFile
 from zlib import compress, decompress
+import durus.connection
 import os
 
 if os.name == 'posix':
@@ -43,7 +42,7 @@ else:
         pass
 
 
-class FileStorage(Storage):
+class FileStorage (Storage):
     """
     Instance attributes:
       fp : file
@@ -62,7 +61,7 @@ class FileStorage(Storage):
         """(filename:str=None, readonly:bool=False, repair:bool=False)
         If filename is empty (or None), a temporary file will be used.
         """
-        self.oid = 0
+        self.oid = -1
         self.filename = filename
         if readonly:
             if not filename:
@@ -93,10 +92,11 @@ class FileStorage(Storage):
         self._set_concrete_class_for_magic()
         self.index = {}
         self._build_index()
-        max_oid = 0
+        max_oid = -1
         for oid in self.index:
             max_oid = max(max_oid, u64(oid))
         self.oid = max_oid
+        self.invalid = set()
 
     def _set_concrete_class_for_magic(self):
         """
@@ -106,15 +106,15 @@ class FileStorage(Storage):
         If the underlying file is empty, this writes the magic
         string into the file.
         """
-        for format in (FileStorage1, FileStorage2):
-            self.fp.seek(0)
-            self.__class__ = format
-            if format.MAGIC == self.fp.read(len(format.MAGIC)):
-                return
-        # Write header for new FileStorage2 file.
+        self.fp.seek(0)
+        format = FileStorage2
+        self.__class__ = format
+        if format.MAGIC == self.fp.read(len(format.MAGIC)):
+            return
         self.fp.seek(0, 2)
         if self.fp.tell() != 0:
              raise IOError, "%r has no FileStorage magic" % self.fp
+        # Write header for new file.
         self._write_header(self.fp)
         self._write_index(self.fp, {})
 
@@ -172,7 +172,9 @@ class FileStorage(Storage):
         A FileStorage is the storage of one StorageServer or one
         Connection, so there can never be any invalidations to transfer.
         """
-        return []
+        result = list(self.invalid)
+        self.invalid.clear()
+        return result
 
     def get_filename(self):
         """() -> str
@@ -195,6 +197,15 @@ class FileStorage(Storage):
     def _disk_format(self, record):
         return record
 
+    def gen_oid_record(self, start_oid=None, batch_size=100):
+        if start_oid is None:
+            for oid, offset in self.index.iteritems():
+                yield oid, self.load(oid)
+        else:
+            for item in Storage.gen_oid_record(
+                self, start_oid=start_oid, batch_size=batch_size):
+                yield item
+
     def _packer(self):
         if self.filename:
             prepack_name = self.filename + '.prepack'
@@ -206,17 +217,8 @@ class FileStorage(Storage):
         lock_file(packed)
         self._write_header(packed)
         def gen_reachable_records():
-            todo = [ROOT_OID]
-            seen = set()
-            while todo:
-                oid = todo.pop()
-                if oid in seen:
-                    continue
-                seen.add(oid)
-                record = self.load(oid)
-                record_oid, data, refdata = unpack_record(record)
-                assert oid == record_oid
-                todo.extend(split_oids(refdata))
+            ROOT_OID = durus.connection.ROOT_OID
+            for oid, record in self.gen_oid_record(start_oid=ROOT_OID):
                 yield oid, record
             while self.pack_extra:
                 oid = self.pack_extra.pop()
@@ -247,6 +249,9 @@ class FileStorage(Storage):
             unlock_file(self.fp)
             self.fp.close()
             self.fp = packed
+        for oid in self.index:
+            if oid not in index:
+                self.invalid.add(oid)
         self.index = index
         self.pack_extra = None
 
@@ -268,15 +273,6 @@ class FileStorage(Storage):
         for z in self.get_packer():
             pass
 
-    def gen_oid_record(self):
-        """() -> sequence([(oid:str, record:str)])
-        Generate oid, record pairs, for all oids in the database.
-        Note that this may include oids that are not reachable from
-        the root object.
-        """
-        for oid in self.index:
-            yield oid, self.load(oid)
-
     def close(self):
         if self.fp is not None:
             unlock_file(self.fp)
@@ -296,91 +292,7 @@ class FileStorage(Storage):
         return result
 
 
-class FileStorage1(FileStorage):
-    """
-    The file consists of a 6-byte distinguishing "magic" string followed
-    by a sequence of transaction records.  Each transaction record is a
-    sequence of object records followed by a 4-byte zero terminator.
-    Object records have the following structure:
-      1) The number of bytes in the next four components of the object
-         record (4 bytes, unsigned, big-endian).
-      2) The transaction identifier (8 bytes, unsigned, big-endian).
-         This will not necessarily be the same for every object record in
-         the transaction record (due to packing).
-      3) The object identifier (8 bytes, unsigned, big-endian).
-      4) The number of bytes in the pickled object state (4 bytes, unsigned,
-         big-endian).
-      5) The pickled object state.  This is normally a the pickle of
-         the object's __dict__, pickled using protocol 2, with a
-         customized pickler that stores oid and class for each
-         reference to a persistent object.
-      6) A sequence of object identifiers (each 8 bytes, unsigned, big-endian)
-         of objects with references in the pickled object state.
-         These referenced object identifiers can be collected directly
-         while unpickling pickled object state, but they are included
-         directly here for faster access.
-
-    Instance attributes:
-      tid: str
-        8 byte transaction identifier.
-        """
-
-    MAGIC = "DFS10\0"
-
-    def __init__(self, *args, **kwargs):
-        FileStorage.__init__(self, *args, **kwargs)
-        self.tid = 0
-
-    def _build_index(self):
-        self.index = {}
-        self.fp.seek(0)
-        if self.fp.read(len(self.MAGIC)) != self.MAGIC:
-            raise IOError, "invalid storage (missing magic in %r)" % self.fp
-        max_tid = 0
-        while 1:
-            # Read one transaction each time here.
-            transaction_offset = self.fp.tell()
-            oids = {}
-            try:
-                while 1:
-                    object_record_offset = self.fp.tell()
-                    trecord = self._read_block()
-                    if len(trecord) == 0:
-                        break # normal termination
-                    if len(trecord) < 16:
-                        raise ValueError("Bad record size")
-                    tid = trecord[0:8]
-                    oid = trecord[8:16]
-                    max_tid = max(max_tid, u64(tid))
-                    oids[oid] = object_record_offset
-                # We've reached the normal end of a transaction.
-                self.index.update(oids)
-                oids.clear()
-            except (ValueError, IOError), exc:
-                if self.fp.tell() > transaction_offset:
-                    if not self.repair:
-                        raise
-                    # The transaction was malformed. Attempt repair.
-                    if self.fp.mode == 'r':
-                        raise RuntimeError(
-                            "Can't repair readonly file.\n%s" % exc)
-                    self.fp.seek(transaction_offset)
-                    self.fp.truncate()
-                break
-        self.tid = max_tid
-
-    def _disk_format(self, record):
-        return p64(self.tid) + record
-
-    def begin(self):
-        """Begin a commit."""
-        self.tid += 1
-
-    def load(self, oid):
-        return FileStorage.load(self, oid)[8:] # just strip the tid.
-
-
-class FileStorage2(FileStorage):
+class FileStorage2 (FileStorage):
     """
      Abbreviations:
 
@@ -400,7 +312,7 @@ class FileStorage2(FileStorage):
 
        1) the number of bytes in rest of the record (u64)
        2) a zlib compressed pickle of a dictionary.  The dictionary maps
-          oids to file offsets for all transactions that preceed the
+          oids to file offsets for all objects records that preceed the 
           index in the file.
 
      A transaction record consists of:
@@ -475,7 +387,7 @@ class FileStorage2(FileStorage):
         assert fp.tell() == len(self.MAGIC) + 8
 
 
-class TempFileStorage(FileStorage2):
+class TempFileStorage (FileStorage2):
 
     def __init__(self):
         FileStorage2.__init__(self)

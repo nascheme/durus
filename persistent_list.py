@@ -1,14 +1,16 @@
-"""$URL$
+"""
+$URL$
 $Id$
 """
-from durus.persistent import Persistent
+from durus.persistent import PersistentObject
 
-class PersistentList(Persistent):
-
+class PersistentList (PersistentObject):
     """
     Instance attributes:
       data : list
     """
+    __slots__ = ['data']
+
     data_is = list
 
     def __init__(self, *args, **kwargs):
@@ -145,3 +147,4 @@ class PersistentList(Persistent):
             self.data.extend(other.data)
         else:
             self.data.extend(other)
+

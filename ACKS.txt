@@ -3,8 +3,6 @@ code produced by our friends at Zope, Inc.  Like ZODB, Durus
 implements a pickle storage system and manages instances of a
 Persistent class in a transactional way.  Like ZEO, Durus supports
 access to a shared storage from connections in multiple processes.
-Unlike ZODB/ZEO, Durus does not support access to earlier object versions
-or object modification times.
 
 The PersistentList class of Durus is derived from the python standard
 UserList, following the same pattern as the ZODB4 PersistentList
@@ -34,3 +32,5 @@ Other Contributors:
 Andrew Kuchling
 Patrick K. O'Brien
 Jesus Cea Avion
+John Belmonte
+

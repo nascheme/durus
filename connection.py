@@ -1,24 +1,26 @@
-"""$URL$
+"""
+$URL$
 $Id$
 """
 from cPickle import loads
 from heapq import heappush, heappop
-from durus.error import ConflictError, ReadConflictError, DurusKeyError
+from durus.error import ConflictError, WriteConflictError, ReadConflictError
+from durus.error import DurusKeyError
 from durus.logger import log
-from durus.persistent import ConnectionBase
+from durus.persistent import ConnectionBase, GHOST
 from durus.persistent_dict import PersistentDict
 from durus.serialize import ObjectReader, ObjectWriter
-from durus.serialize import split_oids, unpack_record, pack_record
-from durus.storage import Storage
+from durus.serialize import unpack_record, pack_record
 from durus.utils import p64
 from itertools import islice, chain
 from os import getpid
 from time import time
-from weakref import WeakValueDictionary, ref
+from weakref import ref, KeyedRef
+import durus.storage
 
 ROOT_OID = p64(0)
 
-class Connection(ConnectionBase):
+class Connection (ConnectionBase):
     """
     The Connection manages movement of objects in and out of storage.
 
@@ -26,7 +28,7 @@ class Connection(ConnectionBase):
       storage: Storage
       cache: Cache
       reader: ObjectReader
-      changed: {oid:str : Persistent}
+      changed: {oid:str : PersistentObject}
       invalid_oids: set([str])
          Set of oids of objects known to have obsolete state.
       transaction_serial: int
@@ -35,29 +37,35 @@ class Connection(ConnectionBase):
         in the cache.
     """
 
-    def __init__(self, storage, cache_size=100000):
-        """(storage:Storage, cache_size:int=100000)
+    def __init__(self, storage, cache_size=100000, root_class=None):
+        """(storage:Storage, cache_size:int=100000, 
+            root_class:class|None=None)
         Make a connection to `storage`.
         Set the target number of non-ghosted persistent objects to keep in
         the cache at `cache_size`.
+        If there is no root object yet, create it as an instance
+        of the root_class (or PersistentDict, if root_class is None), 
+        calling the constructor with no arguments.
+        Also, if the root_class is not None, verify that this really is the 
+        class of the root object.  
         """
-        assert isinstance(storage, Storage)
+        assert isinstance(storage, durus.storage.Storage)
         self.storage = storage
         self.reader = ObjectReader(self)
         self.changed = {}
         self.invalid_oids = set()
-        try:
-            storage.load(ROOT_OID)
-        except KeyError:
-            self.storage.begin()
-            writer = ObjectWriter(self)
-            data, refs = writer.get_state(PersistentDict())
-            writer.close()
-            self.storage.store(ROOT_OID, pack_record(ROOT_OID, data, refs))
-            self.storage.end(self._handle_invalidations)
-            self.transaction_serial += 1
         self.new_oid = storage.new_oid # needed by serialize
         self.cache = Cache(cache_size)
+        self.root = self.get(ROOT_OID)
+        if self.root is None:
+            assert ROOT_OID == self.new_oid()
+            self.root = self.get_cache().get_instance(
+                ROOT_OID, root_class or PersistentDict, self)
+            self.root._p_set_status_saved()
+            self.root.__class__.__init__(self.root)
+            self.root._p_note_change()
+            self.commit()
+        assert root_class in (None, self.root.__class__)
 
     def get_storage(self):
         """() -> Storage"""
@@ -65,7 +73,7 @@ class Connection(ConnectionBase):
 
     def get_cache_count(self):
         """() -> int
-        Return the number of Persistent instances currently in the cache.
+        Return the number of PersistentObject instances currently in the cache.
         """
         return self.cache.get_count()
 
@@ -88,19 +96,17 @@ class Connection(ConnectionBase):
         return self.transaction_serial
 
     def get_root(self):
-        """() -> Persistent
+        """() -> PersistentObject
         Returns the root object.
         """
-        return self.get(ROOT_OID)
+        return self.root
 
     def get_stored_pickle(self, oid):
         """(oid:str) -> str
         Retrieve the pickle from storage.  Will raise ReadConflictError if
-        pickle the pickle is invalid.
+        the oid is invalid.
         """
-        if oid in self.invalid_oids:
-            # someone is still trying to read after getting a conflict
-            raise ReadConflictError([oid])
+        assert oid not in self.invalid_oids, "still conflicted: missing abort()"
         try:
             record = self.storage.load(oid)
         except ReadConflictError:
@@ -112,7 +118,7 @@ class Connection(ConnectionBase):
         return data
 
     def get(self, oid):
-        """(oid:str|int|long) -> Persistent | None
+        """(oid:str|int|long) -> PersistentObject | None
         Return object for `oid`.
 
         The object may be a ghost.
@@ -123,18 +129,21 @@ class Connection(ConnectionBase):
         if obj is not None:
             return obj
         try:
-            pickle = self.get_stored_pickle(oid)
+            data = self.get_stored_pickle(oid)
         except KeyError:
             return None
-        klass = loads(pickle)
+        klass = loads(data)
         obj = self.cache.get_instance(oid, klass, self)
+        state = self.reader.get_state(data, load=True)
+        obj.__setstate__(state)
+        obj._p_set_status_saved()
         return obj
 
     __getitem__ = get
 
     def get_crawler(self, start_oid=ROOT_OID, batch_size=100):
         """(start_oid:str = ROOT_OID, batch_size:int = 100) ->
-            sequence(Persistent)
+            sequence(PersistentObject)
         Returns a generator for the sequence of objects in a breadth first
         traversal of the object graph, starting at the given start_oid.
         The objects in the sequence have their state loaded at the same time,
@@ -143,44 +152,31 @@ class Connection(ConnectionBase):
         batch_size argument sets the number of object records loaded on each
         call to bulk_load().
         """
-        def get_object_and_refs(object_record):
-            oid, data, refdata = unpack_record(object_record)
+        oid_record_sequence = self.storage.gen_oid_record(
+            start_oid=start_oid, batch_size=batch_size)
+        for oid, record in oid_record_sequence:
             obj = self.cache.get(oid)
+            if obj is not None and not obj._p_is_ghost():
+                yield obj
+            record_oid, data, refdata = unpack_record(record)
             if obj is None:
                 klass = loads(data)
                 obj = self.cache.get_instance(oid, klass, self)
-                state = self.reader.get_state(data, load=True)
-                obj.__setstate__(state)
-                obj._p_set_status_saved()
-            elif obj._p_is_ghost():
-                state = self.reader.get_state(data, load=True)
-                obj.__setstate__(state)
-                obj._p_set_status_saved()
-            return obj, split_oids(refdata)
-        queue = [start_oid]
-        seen = set()
-        while queue:
-            batch = queue[:batch_size]
-            queue = queue[batch_size:]
-            seen.update(batch)
-            for record in self.storage.bulk_load(batch):
-                obj, refs = get_object_and_refs(record)
-                for ref in refs:
-                    if ref not in seen:
-                        queue.append(ref)
-                yield obj
+            state = self.reader.get_state(data, load=True)
+            obj.__setstate__(state)
+            obj._p_set_status_saved()
+            yield obj
 
     def get_cache(self):
         return self.cache
 
     def load_state(self, obj):
-        """(obj:Persistent)
+        """(obj:PersistentObject)
         Load the state for the given ghost object.
         """
         assert self.storage is not None, 'connection is closed'
         assert obj._p_is_ghost()
         oid = obj._p_oid
-        setstate = obj.__setstate__
         try:
             pickle = self.get_stored_pickle(oid)
         except DurusKeyError:
@@ -189,7 +185,8 @@ class Connection(ConnectionBase):
             # of packing.
             raise ReadConflictError([oid])
         state = self.reader.get_state(pickle)
-        setstate(state)
+        obj.__setstate__(state)
+        obj._p_set_status_saved()
 
     def note_access(self, obj):
         assert obj._p_connection is self
@@ -198,7 +195,7 @@ class Connection(ConnectionBase):
         self.cache.recent_objects.add(obj)
 
     def note_change(self, obj):
-        """(obj:Persistent)
+        """(obj:PersistentObject)
         This is done when any persistent object is changed.  Changed objects
         will be stored when the transaction is committed or rolled back, i.e.
         made into ghosts, on abort.
@@ -241,15 +238,13 @@ class Connection(ConnectionBase):
     def commit(self):
         """
         If there are any changes, try to store them, and
-        raise ConflictError if there are any invalid oids saved
+        raise WriteConflictError if there are any invalid oids saved
         or if there are any invalid oids for non-ghost objects.
         """
         if not self.changed:
             self._sync()
         else:
-            if self.invalid_oids:
-                # someone is trying to commit after a read or write conflict
-                raise ConflictError(list(self.invalid_oids))
+            assert not self.invalid_oids, "still conflicted: missing abort()"
             self.storage.begin()
             new_objects = {}
             for oid, changed_object in self.changed.iteritems():
@@ -275,7 +270,6 @@ class Connection(ConnectionBase):
                     del self.cache[oid]
                     obj._p_set_status_unsaved()
                     obj._p_connection = None
-                    obj._p_ref = None
                 raise
             self.changed.clear()
         self.shrink_cache()
@@ -291,13 +285,15 @@ class Connection(ConnectionBase):
             obj = self.cache.get(oid)
             if obj is None:
                 continue
-            if not obj._p_is_ghost():
-                self.invalid_oids.add(oid)
             if obj._p_serial == self.transaction_serial:
                 conflicts.append(oid)
+                self.invalid_oids.add(oid)
+            elif not obj._p_is_ghost():
+                assert oid not in self.changed
+                obj._p_set_status_ghost()
         if conflicts:
             if read_oid is None:
-                raise ConflictError(conflicts)
+                raise WriteConflictError(conflicts)
             else:
                 raise ReadConflictError([read_oid])
 
@@ -306,11 +302,57 @@ class Connection(ConnectionBase):
         self.abort()
         self.storage.pack()
 
+class ObjectDictionary (object):
+    """
+    Like a WeakValueDictionary, except that the actual removal of keys is
+    delayed until the next time an iteration is started, when it is assumed
+    that other threads are not continuing any iterations.
+    """
+    def __init__(self):
+        self.mapping = {}
+        self.dead = set()
+        def callback(keyed_ref, selfref=ref(self)):
+            self = selfref()
+            if self is not None:
+                self.dead.add(keyed_ref.key)
+        self.callback = callback
 
-class Cache(object):
+    def get(self, key, default=None):
+        ref = self.mapping.get(key, None)
+        if ref is not None:
+            value = ref()
+            if value is not None and key not in self.dead:
+                return value
+        return default
+
+    def __setitem__(self, key, value):
+        self.dead.discard(key)
+        self.mapping[key] = KeyedRef(value, self.callback, key)
+
+    def __delitem__(self, key):
+        self.dead.add(key)
+
+    def __contains__(self, key):
+        return self.get(key, None) is not None
+
+    def __len__(self):
+        return len(self.mapping) - len(self.dead)
+
+    def clear_dead(self):
+        while self.dead:
+            self.mapping.pop(self.dead.pop(), None)
+
+    def __iter__(self):
+        self.clear_dead()
+        for key in self.mapping:
+            if key not in self.dead:
+                yield key
+
+
+class Cache (object):
 
     def __init__(self, size):
-        self.objects = WeakValueDictionary()
+        self.objects = ObjectDictionary()
         self.recent_objects = set()
         self.set_size(size)
         self.finger = 0
@@ -346,7 +388,7 @@ class Cache(object):
             obj = klass.__new__(klass)
             obj._p_oid = oid
             obj._p_connection = connection
-            obj._p_status = -1 # obj._p_set_status_ghost()
+            obj._p_status = GHOST # obj._p_set_status_ghost()
             objects[oid] = obj
         return obj
 
@@ -373,7 +415,9 @@ class Cache(object):
         heap = []
         for oid in islice(chain(all, all), start, start + len(all)):
             self.finger += 1
-            obj = all[oid]
+            obj = all.get(oid)
+            if obj is None:
+                continue # The ref is dead.
             if obj._p_serial == transaction_serial:
                 continue # obj is current.  Leave it alone.
             heappush(heap, (obj._p_serial, oid))
@@ -425,8 +469,8 @@ def touch_every_reference(connection, *words):
                 get(oid)._p_note_change()
 
 def gen_every_instance(connection, *classes):
-    """(connection:Connection, *classes:(class)) -> sequence [Persistent]
-    Generate all Persistent instances that are instances of any of the
+    """(connection:Connection, *classes:(class)) -> sequence [PersistentObject]
+    Generate all PersistentObject instances that are instances of any of the
     given classes."""
     for oid, record in connection.get_storage().gen_oid_record():
         record_oid, state, refs = unpack_record(record)

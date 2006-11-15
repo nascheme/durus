@@ -330,8 +330,80 @@ static PyTypeObject ConnectionBase_Type = {
 	(newfunc)cb_new,	/* tp_new */
 };
 
+static PyObject *
+setattribute(PyObject *self, PyObject *args)
+{
+	PyObject *target, *name, *value;
+	value = NULL;
+	if (!PyArg_UnpackTuple(args, "", 3, 3, &target, &name, &value))
+		return NULL;
+	if (PyObject_GenericSetAttr(target, name, value) < 0)
+		return NULL;
+	Py_INCREF(Py_None);
+	return Py_None;
+}
+
+static PyObject *
+delattribute(PyObject *self, PyObject *args)
+{
+	PyObject *target, *name;
+	if (!PyArg_UnpackTuple(args, "", 2, 2, &target, &name))
+		return NULL;
+	if (PyObject_GenericSetAttr(target, name, NULL) < 0)
+		return NULL;
+	Py_INCREF(Py_None);
+	return Py_None;
+}
+
+PyObject *
+getattribute(PyObject *self, PyObject *args)
+{
+	PyObject *target, *name;
+	if (!PyArg_UnpackTuple(args, "", 2, 2, &target, &name))
+		return NULL;
+	return PyObject_GenericGetAttr(target, name);
+}
+
+PyObject *
+hasattribute(PyObject *self, PyObject *args)
+{
+	PyObject *result;
+	result = getattribute(self, args);
+	if (result != NULL) {
+	    Py_DECREF(result);
+		result = Py_True;
+	} else {
+		PyErr_Clear();
+		result = Py_False;
+	}
+	Py_INCREF(result);
+	return result;
+}
+
+static char setattribute_doc[] = "\
+This function acts like object.__setattr__(), except that it\n\
+does not cause a persistent instance's state to be loaded and it\n\
+can be applied to instances of PersistentBase when the class is\n\
+implemented in C.";
+
+static char delattribute_doc[] = "\
+This function acts like object.__delattr__(), except that it\n\
+does not cause a persistent instance's state to be loaded and it\n\
+can be applied to instances of PersistentBase when the class is\n\
+implemented in C.";
+
+static char hasattribute_doc[] = "\
+This function acts like hasattr(), except that it does not cause\n\
+a persistent instance's state to be loaded.";
+
+static char getattribute_doc[] = "\
+This function acts like object.__getattribute__().";
 
 static PyMethodDef persistent_module_methods[] = {
+	{"_setattribute", setattribute, METH_VARARGS, setattribute_doc},
+	{"_delattribute", delattribute, METH_VARARGS, delattribute_doc},
+	{"_hasattribute", hasattribute, METH_VARARGS, hasattribute_doc},
+	{"_getattribute", getattribute, METH_VARARGS, getattribute_doc},
 	{NULL, NULL, 0, NULL} /* sentinel */
 };
 

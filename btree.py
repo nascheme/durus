@@ -2,15 +2,15 @@
 $URL$
 $Id$
 """
+from durus.persistent import PersistentObject
 
-from durus.persistent import Persistent
-
-class BNode(Persistent):
+class BNode (PersistentObject):
     """
     Instance attributes:
       items: list
       nodes: [BNode]
     """
+    __slots__ = ['items', 'nodes']
 
     minimum_degree = 2 # a.k.a. t
 
@@ -246,15 +246,41 @@ class BNode(Persistent):
             result += node.get_count()
         return result
 
-class BNode2  (BNode): minimum_degree = 2
-class BNode4  (BNode): minimum_degree = 4
-class BNode8  (BNode): minimum_degree = 8
-class BNode16 (BNode): minimum_degree = 16
-class BNode32 (BNode): minimum_degree = 32
-class BNode64 (BNode): minimum_degree = 64
-class BNode128(BNode): minimum_degree = 128
-class BNode256(BNode): minimum_degree = 256
-class BNode512(BNode): minimum_degree = 512
+class BNode2 (BNode):
+    __slots__ = []
+    minimum_degree = 2
+
+class BNode4 (BNode):
+    __slots__ = []
+    minimum_degree = 4
+
+class BNode8 (BNode):
+    __slots__ = []
+    minimum_degree = 8
+
+class BNode16 (BNode):
+    __slots__ = []
+    minimum_degree = 16
+
+class BNode32 (BNode):
+    __slots__ = []
+    minimum_degree = 32
+
+class BNode64 (BNode):
+    __slots__ = []
+    minimum_degree = 64
+
+class BNode128 (BNode):
+    __slots__ = []
+    minimum_degree = 128
+
+class BNode256 (BNode):
+    __slots__ = []
+    minimum_degree = 256
+
+class BNode512 (BNode):
+    __slots__ = []
+    minimum_degree = 512
 
 # Set narrow specifications of BNode instance attributes.
 for bnode_class in [BNode] + BNode.__subclasses__():
@@ -262,11 +288,13 @@ for bnode_class in [BNode] + BNode.__subclasses__():
     bnode_class.nodes_is = (None, [bnode_class])
 del bnode_class
 
-class BTree(Persistent):
+class BTree (PersistentObject):
     """
     Instance attributes:
       root: BNode
     """
+    __slots__ = ['root']
+
     root_is = BNode
 
     def __init__(self, node_constructor=BNode16):
@@ -321,6 +349,21 @@ class BTree(Persistent):
             return value
         return item[1]
 
+    def update(self, *args, **kwargs):
+        if args:
+            if len(args) > 1:
+                raise TypeError(
+                    "update expected at most 1 argument, got %s" % len(args))
+            items = args[0]
+            if hasattr(items, 'iteritems'):
+                item_sequence = items.iteritems()
+            else:
+                item_sequence = items
+            for key, value in item_sequence:
+                self[key] = value
+        for key, value in kwargs.iteritems():
+            self[key] = value
+
     def __getitem__(self, key):
         item = self.root.search(key)
         if item is None:
@@ -371,7 +414,7 @@ class BTree(Persistent):
         return self.root.get_count()
 
     def items_backward(self):
-        """() -> generator 
+        """() -> generator
         Generate all items in reverse order.
         """
         for item in reversed(self.root):
@@ -410,4 +453,10 @@ class BTree(Persistent):
                     break
                 yield item
 
+    def note_change_of_bnode_containing_key(self, key):
+        """()
+        If self[key] is a non-persistent container with changes that you want
+        to include in the next transaction, call this.
+        """
+        self[key] = self[key]
 

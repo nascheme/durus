@@ -6,32 +6,43 @@ $Id$
 import sys
 import socket
 from optparse import OptionParser
+from durus.client_storage import ClientStorage
 from durus.storage_server import DEFAULT_PORT, DEFAULT_HOST, StorageServer
 from durus.storage_server import SocketAddress
 from durus.file_storage import FileStorage, TempFileStorage
 from durus.logger import log, logger, direct_output
 
-def start_durus(logfile, logginglevel, file, repair, readonly, address):
+def get_storage(file, repair, readonly, masterhost, masterport):
+    if masterport and file:
+        print "Provide a file or a masterport, but not both."
+        raise SystemExit
+    if file:
+        return FileStorage(file, repair=repair, readonly=readonly)
+    elif masterport:
+        port = int(masterport)
+        return ClientStorage(host=masterhost, port=port)
+    else:
+        return TempFileStorage()
+
+def start_durus(logfile, logginglevel, address, storage):
     if logfile is None:
         logfile = sys.stderr
     else:
         logfile = open(logfile, 'a+')
     direct_output(logfile)
     logger.setLevel(logginglevel)
-    if file is None:
-        storage = TempFileStorage()
-    else:
-        storage = FileStorage(file, repair=repair,
-                              readonly=readonly)
     socket_address = SocketAddress.new(address)
-    log(20, 'Storage file=%s address=%s', storage.fp.name, socket_address)
+    if isinstance(storage, FileStorage):
+        log(20, 'Storage file=%s address=%s', storage.fp.name, socket_address)
+    else:
+        log(20, 'Storage master=%s address=%s', storage.address, socket_address)
     StorageServer(storage, address=socket_address).serve()
 
 def stop_durus(address):
     sock = SocketAddress.new(address).get_connected_socket()
     if sock is None:
         raise SystemExit("Durus server %s doesn't seem to be running." %
-                          repr(address))
+                          str(address))
     sock.send('Q') # graceful exit message
     sock.close()
 
@@ -43,10 +54,17 @@ def run_durus_main():
         help='Port to listen on. (default=%s)' % DEFAULT_PORT)
     parser.add_option(
         '--file', dest='file', default=None,
-        help='If this is not given, the storage is in a new temporary file.')
+        help=('If neither this nor masterhost is given, the storage is '
+        'in a new temporary file.'))
     parser.add_option(
         '--host', dest='host', default=DEFAULT_HOST,
         help='Host to listen on. (default=%s)' % DEFAULT_HOST)
+    parser.add_option(
+        '--masterhost', dest='masterhost', default=DEFAULT_HOST,
+        help='Host of master storage server. (default=%s)' % DEFAULT_HOST)
+    parser.add_option(
+        '--masterport', dest='masterport', default=None,
+        help='Port of masterhost. (default=None)')
     if hasattr(socket, 'AF_UNIX'):
         parser.add_option(
             '--address', dest="address", default=None,
@@ -92,10 +110,9 @@ def run_durus_main():
     if not options.stop:
         start_durus(options.logfile,
                     options.logginglevel,
-                    options.file,
-                    options.repair,
-                    options.readonly,
-                    address)
+                    address,
+                    get_storage(options.file, options.repair, options.readonly,
+                        options.masterhost, options.masterport))
     else:
         stop_durus(address)
 

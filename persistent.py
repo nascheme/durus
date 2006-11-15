@@ -13,9 +13,23 @@ GHOST = -1
 
 try:
     from durus._persistent import PersistentBase, ConnectionBase
-    [ConnectionBase] # to silence the unused import checker
+    from durus._persistent import _setattribute, _delattribute
+    from durus._persistent import _getattribute, _hasattribute
+    [ConnectionBase, _hasattribute] # to silence the unused import checker
 except ImportError:
     print >>stderr, 'Using Python base classes for persistence.'
+
+    _setattribute = object.__setattr__
+    _delattribute = object.__delattr__
+    _getattribute = object.__getattribute__
+
+    def _hasattribute(obj, name):
+        try:
+            _getattribute(obj, name)
+        except AttributeError:
+            return False
+        else:
+            return True
 
     class ConnectionBase(object):
         """
@@ -94,24 +108,48 @@ except ImportError:
                 if (connection is not None and
                     self._p_serial != connection.transaction_serial):
                     connection.note_access(self)
-            return object.__getattribute__(self, name)
+            return _getattribute(self, name)
 
         def __setattr__(self, name, value):
             if name[:3] != '_p_' and name not in _GHOST_SAFE_ATTRIBUTES:
                 self._p_note_change()
-            object.__setattr__(self, name, value)
+            _setattribute(self, name, value)
 
 
-class Persistent(PersistentBase):
+class PersistentObject (PersistentBase):
     """
     All Durus persistent objects should inherit from this class.
     """
+    __slots__ = ['__weakref__']
+
+    def _p_gen_data_slots(self):
+        """Generate the sequence of names of data slots that have values.
+        """
+        for klass in self.__class__.__mro__:
+            if klass is not PersistentBase:
+                for name in getattr(klass, '__slots__', []):
+                    if (name not in ('__weakref__', '__dict__') and
+                        _hasattribute(self, name)):
+                        yield name
 
     def __getstate__(self):
-        return self.__dict__
+        if self._p_status == GHOST:
+            self._p_load_state()
+        state = {}
+        if _hasattribute(self, '__dict__'):
+            state.update(_getattribute(self, '__dict__'))
+        for name in self._p_gen_data_slots():
+            state[name] = _getattribute(self, name)
+        return state
 
     def __setstate__(self, state):
-        object.__getattribute__(self, '__dict__').update(state)
+        if _hasattribute(self, '__dict__'):
+            _getattribute(self, '__dict__').clear()
+        for name in self._p_gen_data_slots():
+            _delattribute(self, name)
+        if state is not None:
+            for key, value in state.iteritems():
+                _setattribute(self, key, value)
 
     # This is here for ZODB-compatibility.
     # Note that setting _p_changed to a non-true value does nothing.
@@ -128,7 +166,7 @@ class Persistent(PersistentBase):
 
     def __delattr__(self, name):
         self._p_note_change()
-        PersistentBase.__delattr__(self, name)
+        _delattribute(self, name)
 
     def _p_load_state(self):
         assert self._p_status == GHOST
@@ -137,17 +175,14 @@ class Persistent(PersistentBase):
 
     def _p_note_change(self):
         if self._p_status != UNSAVED:
-            if self._p_status == GHOST:
-                self._p_load_state()
+            self._p_set_status_unsaved()
             self._p_connection.note_change(self)
-            self._p_status = UNSAVED
 
     def _p_format_oid(self):
         return format_oid(self._p_oid)
 
-    def _p_set_status_ghost(self, getattribute=object.__getattribute__):
-        d = getattribute(self, '__dict__')
-        d.clear()
+    def _p_set_status_ghost(self):
+        self.__setstate__({})
         self._p_status = GHOST
 
     def _p_set_status_saved(self):
@@ -168,9 +203,21 @@ class Persistent(PersistentBase):
         return self._p_status == SAVED
 
 
-_Marker = object()
+class Persistent (PersistentObject):
+    """
+    This is the traditional persistent class of Durus.  The state is stored
+    in the __dict__.
+    """
+    def __getstate__(self):
+        return self.__dict__
 
-class ComputedAttribute(Persistent):
+    def __setstate__(self, state):
+        self_dict = _getattribute(self, '__dict__')
+        self_dict.clear()
+        self_dict.update(state)
+
+
+class ComputedAttribute (PersistentObject):
     """Computed attributes do not have any state that needs to be saved in
     the database.  Instead, their value is computed based on other persistent
     objects.  Although they have no real persistent state, they do have
@@ -182,12 +229,10 @@ class ComputedAttribute(Persistent):
 
     Instance attributes: none
     """
+    __slots__ = ['value']
 
     def __getstate__(self):
         return None
-
-    def __setstate__(self, state):
-        assert state is None
 
     def _p_load_state(self):
         # don't need to read state from connection, there is none
@@ -198,7 +243,7 @@ class ComputedAttribute(Persistent):
         other connections to receive a invalidation notification and forget the
         value as well.
         """
-        self.__dict__.clear()
+        self.__setstate__(None)
         self._p_note_change()
 
     def get(self, compute):
@@ -208,8 +253,9 @@ class ComputedAttribute(Persistent):
         to be a function that takes no arguments.
         """
         # we are careful here not to mark object as UNSAVED
-        d = self.__dict__
-        value = d.get('value', _Marker)
-        if value is _Marker:
-            value = d['value'] = compute()
+        if _hasattribute(self, 'value'):
+            value = _getattribute(self, 'value')
+        else:
+            value = compute()
+            _setattribute(self, 'value', value)
         return value

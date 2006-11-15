@@ -1,4 +1,5 @@
-"""$URL$
+"""
+$URL$
 $Id$
 """
 
@@ -23,6 +24,6 @@ def p32(v):
     return struct.pack(">L", v)
 
 def u32(v):
-    """Unpack an 8-byte string into a 32-bit long integer."""
+    """Unpack a 4-byte string into a 32-bit long integer."""
     return struct.unpack(">L", v)[0]
 

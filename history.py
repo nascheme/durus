@@ -2,9 +2,10 @@
 $URL$
 $Id$
 """
-from durus.file_storage import FileStorage2
 from durus.connection import Connection
-from durus.persistent import Persistent
+from durus.file_storage import FileStorage2
+from durus.persistent import PersistentObject
+
 
 class _HistoryIndex (dict):
     """
@@ -119,16 +120,21 @@ class HistoryConnection (Connection):
         """
         Reverse transactions until there is some change in obj.
         When you reach a transaction in which obj no longer exists,
-        the obj will be a ghost, but it will no longer have a __dict__
-        attribute.
+        the obj will be a ghost, but attempts to load the state will
+        fail.
         """
-        assert isinstance(obj, Persistent)
+        assert isinstance(obj, PersistentObject)
+        if obj._p_is_ghost():
+            obj._p_load_state()
         while True:
             self.previous()
             if obj._p_is_ghost():
-                return obj
-            if not hasattr(obj, '__dict__'):
-                return obj
+                try:
+                    obj._p_load_state()
+                except KeyError:
+                    return None
+                else:
+                    return obj
 
     def next_instance(self, obj):
         """
@@ -136,7 +142,9 @@ class HistoryConnection (Connection):
         If obj is not a ghost after calling this, it means we are
         at the current version.
         """
-        assert isinstance(obj, Persistent)
+        assert isinstance(obj, PersistentObject)
+        if obj._p_is_ghost():
+            obj._p_load_state()
         while self.next():
             if obj._p_is_ghost():
                 break
