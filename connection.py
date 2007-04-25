@@ -11,14 +11,14 @@ from durus.persistent import ConnectionBase, GHOST
 from durus.persistent_dict import PersistentDict
 from durus.serialize import ObjectReader, ObjectWriter
 from durus.serialize import unpack_record, pack_record
-from durus.utils import p64
+from durus.utils import int8_to_str
 from itertools import islice, chain
 from os import getpid
 from time import time
 from weakref import ref, KeyedRef
 import durus.storage
 
-ROOT_OID = p64(0)
+ROOT_OID = int8_to_str(0)
 
 class Connection (ConnectionBase):
     """
@@ -124,7 +124,7 @@ class Connection (ConnectionBase):
         The object may be a ghost.
         """
         if type(oid) is not str:
-            oid = p64(oid)
+            oid = int8_to_str(oid)
         obj = self.cache.get(oid)
         if obj is not None:
             return obj
@@ -158,14 +158,15 @@ class Connection (ConnectionBase):
             obj = self.cache.get(oid)
             if obj is not None and not obj._p_is_ghost():
                 yield obj
-            record_oid, data, refdata = unpack_record(record)
-            if obj is None:
-                klass = loads(data)
-                obj = self.cache.get_instance(oid, klass, self)
-            state = self.reader.get_state(data, load=True)
-            obj.__setstate__(state)
-            obj._p_set_status_saved()
-            yield obj
+            else:
+                record_oid, data, refdata = unpack_record(record)
+                if obj is None:
+                    klass = loads(data)
+                    obj = self.cache.get_instance(oid, klass, self)
+                state = self.reader.get_state(data, load=True)
+                obj.__setstate__(state)
+                obj._p_set_status_saved()
+                yield obj
 
     def get_cache(self):
         return self.cache
@@ -187,6 +188,12 @@ class Connection (ConnectionBase):
         state = self.reader.get_state(pickle)
         obj.__setstate__(state)
         obj._p_set_status_saved()
+
+    def get_load_count(self):
+        """() -> int
+        Returns the number of times that any object's state has been loaded.
+        """
+        return self.reader.get_load_count()
 
     def note_access(self, obj):
         assert obj._p_connection is self

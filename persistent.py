@@ -2,7 +2,7 @@
 $URL$
 $Id$
 """
-from durus.utils import format_oid
+from durus.utils import str_to_int8
 from sys import stderr
 
 # these must match the constants in _persistent.c
@@ -179,7 +179,8 @@ class PersistentObject (PersistentBase):
             self._p_connection.note_change(self)
 
     def _p_format_oid(self):
-        return format_oid(self._p_oid)
+        oid = self._p_oid
+        return str(oid and str_to_int8(oid))
 
     def _p_set_status_ghost(self):
         self.__setstate__({})

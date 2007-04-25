@@ -6,7 +6,7 @@ import struct
 from cPickle import Pickler, Unpickler, loads
 from cStringIO import StringIO
 from durus.persistent import PersistentObject
-from durus.utils import p32, u32
+from durus.utils import int4_to_str, str_to_int4
 from zlib import compress, decompress, error as zlib_error
 
 WRITE_COMPRESSED_STATE_PICKLES = True
@@ -15,14 +15,14 @@ PICKLE_PROTOCOL = 2
 def pack_record(oid, data, refs):
     """(oid:str, data:str, refs:str) -> record:str
     """
-    return ''.join([oid, p32(len(data)), data, refs])
+    return ''.join([oid, int4_to_str(len(data)), data, refs])
 
 def unpack_record(record):
     """(record:str) -> oid:str, data:str, refs:str
     The inverse of pack_record().
     """
     oid = record[:8]
-    data_length = u32(record[8:12])
+    data_length = str_to_int4(record[8:12])
     data_end = 12 + data_length
     data = record[12:data_end]
     refs = record[data_end:]
@@ -40,9 +40,11 @@ def split_oids(s):
     return list(struct.unpack('>' + fmt, s))
 
 def extract_class_name(record):
-    oid, state, refs = unpack_record(record)
-    class_name = state.split('\n', 2)[1]
-    return class_name
+    try:
+        oid, state, refs = unpack_record(record)
+        return state.split('\n', 2)[1]
+    except IndexError:
+        return "?"
 
 class ObjectWriter (object):
     """
@@ -116,6 +118,7 @@ class ObjectReader (object):
 
     def __init__(self, connection):
         self.connection = connection
+        self.load_count = 0
 
     def _get_unpickler(self, file):
         connection = self.connection
@@ -134,6 +137,7 @@ class ObjectReader (object):
         return instance
 
     def get_state(self, data, load=True):
+        self.load_count += 1
         s = StringIO()
         s.write(data)
         s.seek(0)
@@ -156,3 +160,6 @@ class ObjectReader (object):
 
     def get_state_pickle(self, data):
         return self.get_state(data, load=False)
+
+    def get_load_count(self):
+        return self.load_count

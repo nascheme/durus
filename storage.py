@@ -4,7 +4,7 @@ $Id$
 """
 from collections import deque
 from durus.serialize import unpack_record, split_oids, extract_class_name
-from durus.utils import p64
+from durus.utils import int8_to_str
 import durus.connection
 
 class Storage (object):
@@ -163,7 +163,7 @@ class MemoryStorage (Storage):
 
     def new_oid(self):
         self.oid += 1
-        return p64(self.oid)
+        return int8_to_str(self.oid)
 
     def load(self, oid):
         return self.records[oid]

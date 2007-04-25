@@ -3,47 +3,190 @@ $URL$
 $Id$
 """
 from cPickle import dumps, loads
+from durus.file import File
+from durus.serialize import unpack_record, split_oids
+from durus.shelf import Shelf
 from durus.storage import Storage
-from durus.utils import p32, u32, p64, u64
-from tempfile import NamedTemporaryFile
+from durus.utils import int8_to_str, str_to_int8, IntSet
+from durus.utils import read, write, read_int8_str, write_int8_str
+from durus.utils import read_int8, write_int8, ShortRead
+from durus.utils import write_int4, read_int4_str, write_int4_str
 from zlib import compress, decompress
 import durus.connection
-import os
-
-if os.name == 'posix':
-    import fcntl
-    def lock_file(fp):
-        fcntl.flock(fp, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    def unlock_file(fp):
-        pass
-    RENAME_OPEN_FILE = True
-elif os.name == 'nt':
-    import win32con, win32file, pywintypes # http://sf.net/projects/pywin32/
-    def lock_file(fp):
-        win32file.LockFileEx(win32file._get_osfhandle(fp.fileno()),
-                             (win32con.LOCKFILE_EXCLUSIVE_LOCK |
-                              win32con.LOCKFILE_FAIL_IMMEDIATELY),
-                             0, -65536, pywintypes.OVERLAPPED())
-    def unlock_file(fp):
-        win32file.UnlockFileEx(win32file._get_osfhandle(fp.fileno()),
-                               0, -65536, pywintypes.OVERLAPPED())
-    RENAME_OPEN_FILE = False
-else:
-    def lock_file(fp):
-        raise RuntimeError("Sorry, don't know how to lock files on your OS")
-    def unlock_file(fp):
-        pass
-    RENAME_OPEN_FILE = False
-
-if hasattr(os, 'fsync'):
-    fsync = os.fsync
-else:
-    def fsync(fd):
-        pass
 
 
 class FileStorage (Storage):
+
+    def __new__(klass, filename=None, readonly=False, repair=False):
+        if klass != FileStorage:
+            return object.__new__(klass)
+        # The caller did not provide a specific concrete class.
+        # We will choose the concrete class from the available implementations,
+        # and by examining the prefix string in the file itself.
+        # The first class in the "implementations" list is the default.
+        implementations = [FileStorage2, ShelfStorage]
+        file = File(filename)
+        storage_class = implementations[0]
+        for implementation in implementations:
+            if implementation.has_format(file):
+                storage_class = implementation
+                break
+        file.close()
+        return storage_class.__new__(storage_class)
+
+    def __str__(self):
+        return '%s(%r)' % (self.__class__.__name__, self.get_filename())
+
+
+def TempFileStorage():
     """
+    This is just a more explicit way of opening a storage that uses a temporary
+    file for the data.  This type of storage can be useful for testing.
+    """
+    return FileStorage()
+
+
+class ShelfStorage (FileStorage):
+    """
+    A ShelfStorage us a FileStorage that uses the Shelf format for the data.
+    The offset index of a shelf is stored in a format that makes it usable
+    directly from the disk.  This offers some advantage in startup time
+    and memory usage.
+    
+    This FileStorage implementation is experimental in Durus 3.7.
+    
+    Instance attributes:
+      shelf : Shelf
+        Contains the stored records.  This wraps a file.
+        See Shelf docs for details of the file format.
+      allocated_unused_oids : set([string])
+        Contains the oids that have been allocated but not yet used.
+      pending_records : { oid:str : record:str }
+        Object records are accumulated here during a commit.
+      pack_extra : [oid:str] | None
+        oids of objects that have been committed after the pack began.  It is
+        None if a pack is not in progress.
+      invalid : set([oid:str])
+        set of oids removed by packs since the last call to sync().
+    """
+    def __init__(self, filename=None, readonly=False, repair=False):
+        self.shelf = Shelf(filename, readonly=readonly, repair=repair)
+        self.pending_records = {}
+        self.allocated_unused_oids = set()
+        self.pack_extra = None
+        self.invalid = set()
+
+    @classmethod
+    def has_format(klass, file):
+        """(File) -> bool
+        Does the given file contain the expected header string?
+        """
+        return Shelf.has_format(file)
+
+    def get_filename(self):
+        """() -> str
+        Returns the full path name of the file that contains the data.
+        """
+        return self.shelf.get_file().get_name()
+
+    def load(self, oid):
+        """(str) -> str"""
+        result = self.shelf.get_value(oid)
+        if result is None:
+            raise KeyError(oid)
+        return result
+
+    def begin(self):
+        self.pending_records.clear()
+
+    def store(self, oid, record):
+        """(str, str)"""
+        self.pending_records[oid] = record
+        if (oid not in self.allocated_unused_oids and
+            oid not in self.shelf and
+            oid != int8_to_str(0)):
+            self.begin()
+            raise ValueError("oid %r is a surprise" % oid)
+
+    def end(self, handle_invalidations=None):
+        self.shelf.store(self.pending_records.iteritems())
+        if self.pack_extra is not None:
+            self.pack_extra.update(self.pending_records)
+        self.allocated_unused_oids -= set(self.pending_records)
+        self.begin()
+
+    def sync(self):
+        """() -> [str]
+        """
+        result = list(self.invalid)
+        self.invalid.clear()
+        return result
+
+    def gen_oid_record(self, start_oid=None, **other):
+        if start_oid is None:
+            for item in self.shelf.iteritems():
+                yield item
+        else:
+            todo = [start_oid]
+            seen = IntSet() # This eventually contains them all.
+            while todo:
+                oid = todo.pop()
+                if str_to_int8(oid) in seen:
+                    continue
+                seen.add(str_to_int8(oid))
+                record = self.load(oid)
+                record_oid, data, refdata = unpack_record(record)
+                assert oid == record_oid
+                todo.extend(split_oids(refdata))
+                yield oid, record
+
+    def new_oid(self):
+        while True:
+            name = self.shelf.next_name()
+            if name not in self.allocated_unused_oids:
+                self.allocated_unused_oids.add(name)
+                return name
+
+    def get_packer(self):
+        assert not self.shelf.get_file().is_temporary()
+        assert not self.shelf.get_file().is_readonly()
+        if self.pending_records or self.pack_extra is not None:
+            return () # Don't pack.
+        self.pack_extra = set()
+        file_path = self.shelf.get_file().get_name()
+        file = File(file_path + '.pack')
+        file.truncate() # obtains lock and clears.
+        assert file.tell() == 0
+        def packer():
+            items = self.gen_oid_record(start_oid=int8_to_str(0))
+            for step in Shelf.generate_shelf(file, items):
+                yield step
+            shelf = Shelf(file)
+            shelf.store(
+                (name, self.shelf.get_value(name)) for name in self.pack_extra)
+            if not self.shelf.get_file().is_temporary():
+                self.shelf.get_file().rename(file_path + '.prepack')
+            shelf.get_file().rename(file_path)
+            for oid in self.shelf:
+                if shelf.get_position(oid) is None:
+                    self.invalid.add(oid)
+            self.shelf = shelf
+            self.pack_extra = None
+        return packer()
+
+
+    def pack(self):
+        for iteration in self.get_packer():
+            pass
+
+    def close(self):
+        self.shelf.close()
+
+
+class FileStorage2 (FileStorage):
+    """
+    This is the standard FileStorage implementation in Durus 3.7.
+    
     Instance attributes:
       fp : file
       index : { oid:string : offset:int }
@@ -53,7 +196,47 @@ class FileStorage (Storage):
       pack_extra : [oid:str] | None
         oids of objects that have been committed after the pack began.  It is
         None if a pack is not in progress.
+
+     Abbreviations:
+
+         int4: a 4 byte unsigned big-endian int8
+         int8: a 8 byte unsigned big-endian int8
+         oid: object identifier (str_to_int8)
+
+     The file format is as follows:
+
+       1) a 6-byte distinguishing "magic" string
+       2) the offset to the start of the index record (int8)
+       3) zero or more transaction records
+       4) the index record
+       5) zero or more transaction records
+
+     The index record consists of:
+
+       1) the number of bytes in rest of the record (int8)
+       2) a zlib compressed pickle of a dictionary.  The dictionary maps
+          oids to file offsets for all objects records that preceed the
+          index in the file.
+
+     A transaction record consists of:
+
+       1) zero of more object records
+       2) int4 zero (i.e. 4 null bytes)
+
+     An object record consists of:
+
+       1) the number of bytes in rest of the record (int4)
+       2) an oid (int8)
+       3) the number of bytes in the following field.
+       4) the pickle of the object's class followed by the zlib compressed
+          pickle of the object's state.  These pickles are produced in
+          sequence using the same pickler, with pickle protocol 2.
+       5) a sequence of oids of persistent objects referenced in the pickled
+          object state.  It is possible to collect these by unpickling the
+          object state, but they are included directly here for faster access.
     """
+
+    MAGIC = "DFS20\0"
 
     _PACK_INCREMENT = 20 # number of records to pack before yielding
 
@@ -62,80 +245,51 @@ class FileStorage (Storage):
         If filename is empty (or None), a temporary file will be used.
         """
         self.oid = -1
-        self.filename = filename
-        if readonly:
-            if not filename:
-                raise ValueError(
-                    "A filename is required for a readonly storage.")
-            if repair:
-                raise ValueError("A readonly storage can't be repaired.")
-            self.fp = open(self.filename, 'rb')
-        else:
-            if not filename:
-                self.fp = NamedTemporaryFile(suffix=".durus", mode="w+b")
-            elif (os.path.exists(self.filename) and
-                  os.stat(self.filename).st_size > 0):
-                self.fp = open(self.filename, 'a+b')
-            else:
-                self.fp = open(self.filename, 'w+b')
-            try:
-                lock_file(self.fp)
-            except IOError:
-                self.fp.close()
-                raise RuntimeError(
-                    "\n  %s is locked."
-                    "\n  There is probably a Durus storage server (or a client)"
-                    "\n  using it.\n" % self.get_filename())
+        self.fp = File(filename, readonly=readonly)
         self.pending_records = {}
         self.pack_extra = None
-        self.repair = repair
-        self._set_concrete_class_for_magic()
+
+        self.fp.seek(0, 2)
+        if self.fp.tell() != 0:
+            assert self.has_format(self.fp)
+        else:
+            # Write header for new file.
+            self.fp.seek(len(self.MAGIC))
+            self._write_header(self.fp)
+            self._write_index(self.fp, {})
+
         self.index = {}
-        self._build_index()
+        self._build_index(repair)
         max_oid = -1
         for oid in self.index:
-            max_oid = max(max_oid, u64(oid))
+            max_oid = max(max_oid, str_to_int8(oid))
         self.oid = max_oid
         self.invalid = set()
 
-    def _set_concrete_class_for_magic(self):
-        """
-        FileStorage is an abstract class.
-        The constructor calls this to set self.__class__ to a subclass
-        that matches the format of the underlying file.
-        If the underlying file is empty, this writes the magic
-        string into the file.
-        """
-        self.fp.seek(0)
-        format = FileStorage2
-        self.__class__ = format
-        if format.MAGIC == self.fp.read(len(format.MAGIC)):
-            return
-        self.fp.seek(0, 2)
-        if self.fp.tell() != 0:
-             raise IOError, "%r has no FileStorage magic" % self.fp
-        # Write header for new file.
-        self._write_header(self.fp)
-        self._write_index(self.fp, {})
+    @classmethod
+    def has_format(klass, file):
+        file.seek(0)
+        try:
+            if klass.MAGIC == read(file, len(klass.MAGIC)):
+                return True
+        except ShortRead:
+            pass
+        return False
 
     def _write_header(self, fp):
         fp.seek(0, 2)
         assert fp.tell() == 0
-        fp.write(self.MAGIC)
-
-    def _write_index(self, fp, index):
-        pass
+        write(fp, self.MAGIC)
+        write_int8(fp, 0) # index offset
 
     def get_size(self):
         return len(self.index)
 
     def new_oid(self):
         self.oid += 1
-        return p64(self.oid)
+        return int8_to_str(self.oid)
 
     def load(self, oid):
-        if self.fp is None:
-            raise IOError, 'storage is closed'
         offset = self.index[oid]
         self.fp.seek(offset)
         return self._read_block()
@@ -154,23 +308,19 @@ class FileStorage (Storage):
     def end(self, handle_invalidations=None):
         """Complete a commit.
         """
-        if self.fp is None:
-            raise IOError, 'storage is closed'
         index = {}
         for z in self._write_transaction(
             self.fp, self._generate_pending_records(), index):
             pass
         self.fp.flush()
-        fsync(self.fp)
+        self.fp.fsync()
         self.index.update(index)
         if self.pack_extra is not None:
             self.pack_extra.extend(index)
         self.pending_records.clear()
 
     def sync(self):
-        """
-        A FileStorage is the storage of one StorageServer or one
-        Connection, so there can never be any invalidations to transfer.
+        """() -> [str]
         """
         result = list(self.invalid)
         self.invalid.clear()
@@ -181,18 +331,17 @@ class FileStorage (Storage):
         The name of the file.
         If a tempfile is being used, the name will change when it is packed.
         """
-        return self.filename or self.fp.name
+        return self.fp.get_name()
 
     def _write_transaction(self, fp, records, index):
         fp.seek(0, 2)
         for i, (oid, record) in enumerate(records):
             full_record = self._disk_format(record)
             index[oid] = fp.tell()
-            fp.write(p32(len(full_record)))
-            fp.write(full_record)
+            write_int4_str(fp, full_record)
             if i % self._PACK_INCREMENT == 0:
                 yield None
-        fp.write(p32(0)) # terminator
+        write_int4(fp, 0) # terminator
 
     def _disk_format(self, record):
         return record
@@ -207,14 +356,14 @@ class FileStorage (Storage):
                 yield item
 
     def _packer(self):
-        if self.filename:
-            prepack_name = self.filename + '.prepack'
-            pack_name = self.filename + '.pack'
-            packed = open(pack_name, 'w+b')
-        else:
-            packed = NamedTemporaryFile(suffix=".durus",
-                                        mode="w+b")
-        lock_file(packed)
+        name = self.fp.get_name()
+        prepack_name = name + '.prepack'
+        pack_name = name + '.pack'
+        packed = File(pack_name)
+        if len(packed) > 0:
+            # packed contains data left from an incomplete pack attempt.
+            packed.seek(0)
+            packed.truncate()
         self._write_header(packed)
         def gen_reachable_records():
             ROOT_OID = durus.connection.ROOT_OID
@@ -229,26 +378,13 @@ class FileStorage (Storage):
             yield None
         self._write_index(packed, index)
         packed.flush()
-        fsync(packed)
-        if self.filename:
-            if not RENAME_OPEN_FILE:
-                unlock_file(packed)
-                packed.close()
-            unlock_file(self.fp)
+        packed.fsync()
+        if self.fp.is_temporary():
             self.fp.close()
-            if os.path.exists(prepack_name): # for Win32
-                os.unlink(prepack_name)
-            os.rename(self.filename, prepack_name)
-            os.rename(pack_name, self.filename)
-            if RENAME_OPEN_FILE:
-                self.fp = packed
-            else:
-                self.fp = open(self.filename, 'r+b')
-                lock_file(self.fp)
-        else: # tempfile
-            unlock_file(self.fp)
-            self.fp.close()
-            self.fp = packed
+        else:
+            self.fp.rename(prepack_name)
+        packed.rename(name)
+        self.fp = packed
         for oid in self.index:
             if oid not in index:
                 self.invalid.add(oid)
@@ -260,94 +396,32 @@ class FileStorage (Storage):
         called, up to _PACK_INCREMENT records will be packed.  Note that the
         generator must be exhausted before calling get_packer() again.
         """
-        if self.fp is None:
-            raise IOError, 'storage is closed'
-        if self.fp.mode == 'rb':
-            raise IOError, "read-only storage"
-        assert not self.pending_records
-        assert self.pack_extra is None
-        self.pack_extra = []
-        return self._packer()
+        assert not self.fp.is_temporary()
+        assert not self.fp.is_readonly()
+        if self.pack_extra is not None or self.pending_records:
+            return ()
+        else:
+            self.pack_extra = []
+            return self._packer()
 
     def pack(self):
         for z in self.get_packer():
             pass
 
     def close(self):
-        if self.fp is not None:
-            unlock_file(self.fp)
-            self.fp.close()
-            self.fp = None
+        self.fp.close()
 
     def _read_block(self):
-        size_str = self.fp.read(4)
-        if len(size_str) == 0:
-            raise IOError, "eof"
-        size = u32(size_str)
-        if size == 0:
-            return ''
-        result = self.fp.read(size)
-        if len(result) != size:
-            raise IOError, "short read"
-        return result
+        return read_int4_str(self.fp)
 
-
-class FileStorage2 (FileStorage):
-    """
-     Abbreviations:
-
-         u32: a 4 byte unsigned big-endian integer
-         u64: a 8 byte unsigned big-endian integer
-         oid: object identifier (u64)
-
-     The file format is as follows:
-
-       1) a 6-byte distinguishing "magic" string
-       2) the offset to the start of the index record (u64)
-       3) zero or more transaction records
-       4) the index record
-       5) zero or more transaction records
-
-     The index record consists of:
-
-       1) the number of bytes in rest of the record (u64)
-       2) a zlib compressed pickle of a dictionary.  The dictionary maps
-          oids to file offsets for all objects records that preceed the 
-          index in the file.
-
-     A transaction record consists of:
-
-       1) zero of more object records
-       2) a u32 zero (i.e. 4 null bytes)
-
-     An object record consists of:
-
-       1) the number of bytes in rest of the record (u32)
-       2) an oid (u64)
-       3) the number of bytes in the following field.
-       4) the pickle of the object's class followed by the zlib compressed
-          pickle of the object's state.  These pickles are produced in
-          sequence using the same pickler, with pickle protocol 2.
-       5) a sequence of oids of persistent objects referenced in the pickled
-          object state.  It is possible to collect these by unpickling the
-          object state, but they are included directly here for faster access.
-    """
-
-    MAGIC = "DFS20\0"
-
-    def _write_header(self, fp):
-        FileStorage._write_header(self, fp)
-        fp.write(p64(0)) # index offset
-
-    def _build_index(self):
+    def _build_index(self, repair):
         self.fp.seek(0)
-        if self.fp.read(len(self.MAGIC)) != self.MAGIC:
+        if read(self.fp, len(self.MAGIC)) != self.MAGIC:
             raise IOError, "invalid storage (missing magic in %r)" % self.fp
-        index_offset = u64(self.fp.read(8))
+        index_offset = read_int8(self.fp)
         assert index_offset > 0
         self.fp.seek(index_offset)
-        index_size = u64(self.fp.read(8))
-        self.index = loads(decompress(self.fp.read(index_size)))
+        self.index = loads(decompress(read_int8_str(self.fp)))
         while 1:
             # Read one transaction each time here.
             oids = {}
@@ -359,7 +433,7 @@ class FileStorage2 (FileStorage):
                     if len(record) == 0:
                         break # normal termination
                     if len(record) < 12:
-                        raise ValueError("Bad record size")
+                        raise ShortRead("Bad record size")
                     oid = record[0:8]
                     oids[oid] = object_record_offset
                 # We've reached the normal end of a transaction.
@@ -367,12 +441,9 @@ class FileStorage2 (FileStorage):
                 oids.clear()
             except (ValueError, IOError), exc:
                 if self.fp.tell() > transaction_offset:
-                    if not self.repair:
+                    if not repair:
                         raise
                     # The transaction was malformed. Attempt repair.
-                    if self.fp.mode == 'r':
-                        raise RuntimeError(
-                            "Can't repair readonly file.\n%s" % exc)
                     self.fp.seek(transaction_offset)
                     self.fp.truncate()
                 break
@@ -380,16 +451,8 @@ class FileStorage2 (FileStorage):
     def _write_index(self, fp, index):
         index_offset = fp.tell()
         compressed = compress(dumps(index))
-        fp.write(p64(len(compressed)))
-        fp.write(compressed)
+        write_int8_str(fp, compressed)
         fp.seek(len(self.MAGIC))
-        fp.write(p64(index_offset))
+        write_int8(fp, index_offset)
         assert fp.tell() == len(self.MAGIC) + 8
-
-
-class TempFileStorage (FileStorage2):
-
-    def __init__(self):
-        FileStorage2.__init__(self)
-
 

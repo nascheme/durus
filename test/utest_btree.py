@@ -125,6 +125,9 @@ class CoverageTest(UTest):
         for cutoff in (-1, 1, 50.1, 100, 102):
             assert (list([(x, y) for (x, y) in bt.items() if x >= cutoff]) ==
                     list(bt.items_from(cutoff)))
+            assert (list([(x, y) for (x, y) in bt.items() if x > cutoff]) ==
+                    list(bt.items_from(cutoff, closed=False)))
+
 
     def items_backward_from(self):
         bt = BTree()
@@ -133,6 +136,10 @@ class CoverageTest(UTest):
             expect = list(reversed([(x, y) for (x, y) in bt.items()
                                     if x < cutoff]))
             got = list(bt.items_backward_from(cutoff))
+            assert expect == got, (cutoff, expect, got)
+            expect = list(reversed([(x, y) for (x, y) in bt.items()
+                                    if x <= cutoff]))
+            got = list(bt.items_backward_from(cutoff, closed=True))
             assert expect == got, (cutoff, expect, got)
 
     def items_range(self):
@@ -145,9 +152,41 @@ class CoverageTest(UTest):
                         if lo <= x < hi])
             got = list(bt.items_range(lo, hi))
             assert expect == got, (lo, hi, expect, got)
+            expect = list([(x, y) for (x, y) in bt.items()
+                        if lo < x < hi])
+            got = list(bt.items_range(lo, hi, closed_start=False))
+            assert expect == got, (lo, hi, expect, got)
+            expect = list([(x, y) for (x, y) in bt.items()
+                        if lo < x <= hi])
+            got = list(bt.items_range(
+                lo, hi, closed_start=False, closed_end=True))
+            assert expect == got, (lo, hi, expect, got)
+            expect = list([(x, y) for (x, y) in bt.items()
+                        if lo <= x <= hi])
+            got = list(bt.items_range(
+                lo, hi, closed_start=True, closed_end=True))
+            assert expect == got, (lo, hi, expect, got)
             expect = list(reversed([(x, y) for (x, y) in bt.items()
                         if lo < x <= hi]))
             got = list(bt.items_range(hi, lo))
+            assert expect == got, (hi, lo, expect, got)
+            expect = list(reversed([(x, y) for (x, y) in bt.items()
+                        if lo <= x <= hi]))
+            got = list(bt.items_range(hi, lo, closed_end=True))
+            assert expect == got, (hi, lo, expect, got)
+            expect = list(reversed([(x, y) for (x, y) in bt.items()
+                        if lo <= x < hi]))
+            got = list(bt.items_range(
+                hi, lo, closed_start=False, closed_end=True))
+            assert expect == got, (hi, lo, expect, got)
+            expect = list(reversed([(x, y) for (x, y) in bt.items()
+                        if lo < x < hi]))
+            got = list(bt.items_range(
+                hi, lo, closed_start=False, closed_end=False))
+            assert expect == got, (hi, lo, expect, got)
+            expect = list(reversed([(x, y) for (x, y) in bt.items()
+                        if lo <= x <= hi]))
+            got = list(bt.items_range(hi, lo, closed_end=True))
             assert expect == got, (hi, lo, expect, got)
 
     def search(self):
@@ -210,6 +249,25 @@ class CoverageTest(UTest):
         assert bt['b'] == 2
         assert bt['a'] == 1
 
+    def insert_item(self):
+        # This sequences leads to a splitting where
+        # the inserted item has the same key as the split
+        # point.
+        keys = [3, 56, 11, 57, 1, 32, 106, 98, 103, 108,
+        101, 104, 7, 94, 105, 85, 99, 89, 28, 65,
+        107, 95, 97, 93, 96, 102, 86, 100, 0, 14,
+        35, 15, 12, 6, 84, 90, 2, 81, 4, 5,
+        69, 9, 30, 78, 13, 10, 8, 82, 47, 62,
+        27, 88, 87, 83, 31, 79, 45, 91, 29, 92,
+        34, 33, 44, 25, 50, 26, 16, 17, 19, 43,
+        21, 64, 24, 37, 22, 59, 63, 18, 20, 38,
+        52, 55, 53, 42, 23, 39, 60, 40, 36, 41,
+        46, 61, 77, 75, 68, 74, 73, 71, 72, 70,
+        80, 54, 67, 66, 51, 49, 76, 58, 49]
+        bt = BTree()
+        for i, key in enumerate(keys):
+            bt[key] = i
+            assert bt[key] is i, (i,  key, bt[key])
 
 
 class SlowTest(UTest):

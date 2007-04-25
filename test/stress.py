@@ -143,7 +143,6 @@ def main():
         connection.abort()
     n = options.loops
     while n is None or n > 0:
-        
         if n is not None:
             n -= 1
         try:

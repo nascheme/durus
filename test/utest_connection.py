@@ -11,10 +11,13 @@ from durus.persistent import Persistent, PersistentBase
 from durus.persistent import ConnectionBase
 from durus.storage import get_reference_index, get_census, MemoryStorage
 from durus.storage import gen_referring_oid_record, Storage
-from durus.utils import p64
+from durus.storage_server import wait_for_server
+from durus.utils import int8_to_str
+from os import unlink
+from os.path import exists
 from popen2 import Popen4
 from sancho.utest import UTest, raises
-from time import sleep
+from tempfile import mktemp
 import sys
 
 class TestConnection (UTest):
@@ -26,10 +29,10 @@ class TestConnection (UTest):
         self.conn=conn=Connection(self._get_storage())
         self.root=root=conn.get_root()
         assert root._p_is_ghost() == False
-        assert root is conn.get(p64(0))
+        assert root is conn.get(int8_to_str(0))
         assert root is conn.get(0)
         assert conn is root._p_connection
-        assert conn.get(p64(1)) == None
+        assert conn.get(int8_to_str(1)) == None
         conn.abort()
         conn.commit()
         assert root._p_is_ghost() == False
@@ -83,12 +86,14 @@ class TestConnection (UTest):
         root['b'] = Persistent()
         connection.commit()
         index = get_reference_index(connection.get_storage())
-        assert index == {p64(1): [p64(0)], p64(2): [p64(0)]}
+        assert index == {
+            int8_to_str(1): [int8_to_str(0)], int8_to_str(2): [int8_to_str(0)]}
         census = get_census(connection.get_storage())
         assert census == {'PersistentDict':1, 'Persistent':2}
         references = list(gen_referring_oid_record(connection.get_storage(),
-                                                   p64(1)))
-        assert references == [(p64(0), connection.get_storage().load(p64(0)))]
+                                                   int8_to_str(1)))
+        assert references == [
+            (int8_to_str(0), connection.get_storage().load(int8_to_str(0)))]
         class Fake(object):
             pass
         s = Fake()
@@ -128,19 +133,25 @@ class TestConnectionClientStorage (TestConnection):
 
     def _pre(self):
         self.port = 9123
-        self.server = Popen4('python %s --port=%s' % (
-            run_durus.__file__, self.port))
-        sleep(2) # wait for bind
+        self.filename = mktemp()
+        self.server = Popen4('python %s --port=%s --file=%s' % (
+            run_durus.__file__, self.port, self.filename))
+        wait_for_server(address=("", 9123), sleeptime=1)
 
     def _post(self):
         run_durus.stop_durus(("", self.port))
+        if exists(self.filename):
+            unlink(self.filename)
+        pack_name = self.filename + '.pack'
+        if exists(pack_name):
+            unlink(pack_name)
 
     def check_conflict(self):
         b = Connection(self._get_storage())
         c = Connection(self._get_storage())
-        rootb = b.get(p64(0))
+        rootb = b.get(int8_to_str(0))
         rootb['b'] = Persistent()
-        rootc = c.get(p64(0))
+        rootc = c.get(int8_to_str(0))
         rootc['c'] = Persistent()
         print rootb
         print rootb['b']

@@ -12,7 +12,7 @@ class _HistoryIndex (dict):
     A substitute offset index used in HistoryFileStorage.
     This keeps a history of updates and provides methods for
     moving backward and forward in that history.
-    
+
     """
     def __init__(self, other_dict):
         dict.__init__(self)
@@ -49,13 +49,16 @@ class _HistoryIndex (dict):
 class HistoryFileStorage (FileStorage2):
     """
     This variant of storage allows stepping forward and backward
-    among the transaction records.  
+    among the transaction records.
     """
-    def __init__(self, filename=None, readonly=True, repair=False):
-        assert readonly and not repair
+    def __init__(self, filename=None, repair=False):
+        assert not repair
         FileStorage2.__init__(self,
-            filename=filename, readonly=True, repair=False)
+            filename=filename, repair=False)
         self.invalid = {}
+
+    def end(self):
+        raise RuntimeError("No commits allowed for this storage.")
 
     def _set_concrete_class_for_magic(self):
         pass
@@ -92,7 +95,7 @@ class HistoryFileStorage (FileStorage2):
 
 class HistoryConnection (Connection):
     """
-    A Connection that provides (read-only) access to a FileStorage with
+    A Connection that provides access to a FileStorage with
     the ability reverse and advance transactions.
     """
     def __init__(self, filename):

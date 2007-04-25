@@ -7,7 +7,7 @@ import sys
 import os
 import new
 from code import InteractiveConsole
-from durus.utils import p64, u64
+from durus.utils import int8_to_str, str_to_int8
 from durus.file_storage import FileStorage
 from durus.client_storage import ClientStorage
 from durus.connection import Connection
@@ -47,8 +47,8 @@ def interactive_client(file, address, cache_size, readonly, repair,
                  'get': connection.get,
                  'sys': sys,
                  'os': os,
-                 'p64': p64,
-                 'u64': u64,
+                 'int8_to_str': int8_to_str,
+                 'str_to_int8': str_to_int8,
                  'pp': pprint}
     vars(console_module).update(namespace)
     configure_readline(

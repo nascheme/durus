@@ -3,7 +3,8 @@ $URL$
 $Id$
 """
 from durus.file_storage import TempFileStorage
-from durus.storage_server import StorageServer, recv
+from durus.storage_server import StorageServer
+from durus.utils import read
 from random import choice
 from sancho.utest import UTest
 
@@ -22,7 +23,7 @@ class Test (UTest):
             def recv(x, n):
                 return choice(['a', 'bb'])[:n]
         fake_socket = Dribble()
-        recv(fake_socket, 30)
+        read(fake_socket, 30)
 
 
 if __name__ == "__main__":

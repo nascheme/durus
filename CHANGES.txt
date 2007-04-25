@@ -1,3 +1,114 @@
+3.7: (2007-05-02)
+
+     * Fix a bug in BTree insert_item().  The bug was discovered by 
+       Andrew Bettison, and he contributed the patch to fix it.  The exact
+       change can be seen by comparing the BNode insert_item() implementation
+       in the 3.7 and 3.6 releases.  Thanks, Andrew.
+
+     * Make bulk_load safer by consuming the entire response from the server
+       before yielding any results.  Also provide additional checks on oids
+       list that is passed in.
+
+     * Add keyword arguments to the BTree range iteration methods to
+       allow the caller to include or exclude items on the boundary of
+       the range.
+
+     * Add Connection.get_load_count(), which returns the number of
+       times any object's state has been loaded.  The idea is to
+       provide some information that applications could use to make
+       cache size adjustments at run time.
+
+     * Repair docstring on FileStorage.sync().
+
+     * Fix a bug in Connection.get_crawler() that caused loaded
+       objects to be included twice in the generated sequence.
+
+     * Rename low-level conversion functions.
+       p64 -> int8_to_str
+       p32 -> int4_to_str
+       u64 -> str_to_int8
+       u32 -> str_to_int4
+
+       Add utility functions:
+       read()
+       write()
+       read_int4()
+       write_int4()
+       read_int8()
+       write_int8()
+       read_int4_str()
+       write_int4_str()
+       read_int8_str()
+       write_int8_str()
+
+       Run file and socket io through these utils.
+       A module variable durus.utils.TRACE can be set
+       to trace all I/O, as it runs through read()/write().
+
+     * Add ShortRead, a subclass of IO that is raised when
+       read() can't find the expected number of bytes.
+
+     * Add IntSet, a class for compact representation of sets of
+       natural numbers (such as the set of all oids in a Durus
+       database).  This may be useful for packing of large databases,
+       where traversal requires keeping track of the set of oids
+       already visited.
+
+     * Add a File class for use by FileStorage.  The intent is to
+       provide methods that wrap platform-specific differences in
+       locking, syncing, renaming, etc.
+
+     * Add data array classes to utils.  Byte, BitArray, ByteArray,
+       WordArray, and IntArray.  The objective of this is to provide
+       support holding large sets/arrays either either in memory or on
+       disk by wrapping file-like objects that hold the bytes.
+       
+     * Add a new, experimental, type of FileStorage.  The new
+       type of FileStorage is called ShelfStorage.  It stores the offset
+       index (at the time of the last pack) using an array format that
+       can be used directly from disk.  This makes the storage 
+       start-up time and memory requirement vary with the number 
+       of objects saved since the last pack, whereas in the 
+       standard FileStorage format (FileStorage2), the start-up time
+       and the memory vary with the total number of objects stored
+       in the database.  The new shelf.py module can be used as
+       a script to convert an existing FileStorage into the new
+       format.  ShelfStorage is still new and it has not been tested
+       nearly as well as FileStorage.  Please keep that in mind
+       if you try it.
+
+     * Don't depend on FileStorage readonly flag for History.
+       Just make end() raise a RuntimeError.
+
+     * Unlink rename target if it exists.
+
+     * Use File class for wrapping the FileStorage file.  Locking is
+       delayed until write, or other destructive operations are
+       attempted.  Don't save "repair" value on an attribute.  Don't
+       set fp to None when close() is called.
+
+     * If an old ".pack" file is found, clobber it instead of raising
+       an exception.  The old file is assumed to be left from a
+       previous pack that was stopped before completion.
+
+     * Call close() on graceful quit.
+
+     * Avoid leaving tempfiles around when tests execute.
+       Make test socket be in /tmp, to avoid permissions problems.
+
+     * Make extract_class_name() guard against bogus records.
+       Otherwise, a bogus record will crash a server that uses
+       extract_class_name() for logging.
+
+     * Make stop_durus() attempt to wait until the server stops
+       listening.
+
+     * Improve load record format: include pid.
+
+     * Add some assertions that guard against duplicate oid allocation.
+     
+     * Remove durus.utils.format_oid().  Use obj._p_format_oid() instead.
+
 3.6: (2006-11-15):
 
     * Add support for persistent instances that use slots for state data.

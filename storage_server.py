@@ -6,9 +6,10 @@ from datetime import datetime
 from durus.error import ReadConflictError, ConflictError
 from durus.logger import log, is_logging
 from durus.serialize import extract_class_name, split_oids
-from durus.utils import p32, u32, u64
+from durus.utils import int4_to_str, str_to_int4, str_to_int8, read, write
+from durus.utils import read_int4, read_int4_str, write_int4_str
 from grp import getgrnam, getgrgid
-from os import unlink, stat, chown, geteuid, getegid, umask
+from os import unlink, stat, chown, geteuid, getegid, umask, getpid
 from os.path import exists
 from pwd import getpwnam, getpwuid
 from time import sleep
@@ -25,29 +26,7 @@ TIMEOUT = 10
 DEFAULT_HOST = '127.0.0.1'
 DEFAULT_PORT = 2972
 
-TRACE = False
 
-def recv(s, n):
-    """(s:socket, n:int) -> str
-    Call the recv() method on the socket, repeating as required until n bytes
-    are received.
-    """
-    data = []
-    while n > 0:
-        hunk = s.recv(min(n, 1000000))
-        if not hunk:
-            raise IOError, 'connection reset by peer'
-        n -= len(hunk)
-        data.append(hunk)
-    m = ''.join(data)
-    if TRACE:
-        print "%s <- %r" % (id(s), m)
-    return m
-
-def sendall(s, m):
-    if TRACE:
-        print "%s -> %r" % (id(s), m)
-    s.sendall(m)
 
 class _Client (object):
 
@@ -205,7 +184,7 @@ class UnixDomainSocketAddress (SocketAddress):
 
 class StorageServer (object):
 
-    protocol = p32(1)
+    protocol = int4_to_str(1)
 
     def __init__(self, storage, host=DEFAULT_HOST,
                  port=DEFAULT_PORT, address=None):
@@ -254,7 +233,7 @@ class StorageServer (object):
             self.address.close(sock)
 
     def handle(self, s):
-        command_code = recv(s, 1)
+        command_code = read(s, 1)
         handler = getattr(self, 'handle_%s' % command_code, None)
         if handler is None:
             raise ClientError('No such command code: %r' % command_code)
@@ -273,31 +252,31 @@ class StorageServer (object):
 
     def handle_N(self, s):
         # new OID
-        sendall(s, self._new_oids(s, 1)[0])
+        write(s, self._new_oids(s, 1)[0])
 
     def handle_M(self, s):
         # new OIDs
-        count = ord(recv(s, 1))
+        count = ord(read(s, 1))
         log(10, "oids: %s", count)
-        sendall(s, ''.join(self._new_oids(s, count)))
+        write(s, ''.join(self._new_oids(s, count)))
 
     def handle_L(self, s):
         # load
-        oid = recv(s, 8)
+        oid = read(s, 8)
         self._send_load_response(s, oid)
 
     def _send_load_response(self, s, oid):
         if oid in self._find_client(s).invalid:
-            sendall(s, STATUS_INVALID)
+            write(s, STATUS_INVALID)
         else:
             try:
                 record = self.storage.load(oid)
             except KeyError:
-                log(10, 'KeyError %s', u64(oid))
-                sendall(s, STATUS_KEYERROR)
+                log(10, 'KeyError %s', str_to_int8(oid))
+                write(s, STATUS_KEYERROR)
             except ReadConflictError:
-                log(10, 'ReadConflictError %s', u64(oid))
-                sendall(s, STATUS_INVALID)
+                log(10, 'ReadConflictError %s', str_to_int8(oid))
+                write(s, STATUS_INVALID)
             else:
                 if is_logging(5):
                     class_name = extract_class_name(record)
@@ -305,33 +284,34 @@ class StorageServer (object):
                         self.load_record[class_name] += 1
                     else:
                         self.load_record[class_name] = 1
-                    log(4, 'Load %-7s %s', u64(oid), class_name)
-                sendall(s, STATUS_OKAY + p32(len(record)) + record)
+                    log(4, 'Load %-7s %s', str_to_int8(oid), class_name)
+                write(s, STATUS_OKAY)
+                write_int4_str(s, record)
 
     def handle_C(self, s):
         # commit
         self._sync_storage()
         client = self._find_client(s)
-        sendall(s, p32(len(client.invalid)) + ''.join(client.invalid))
+        write(s, int4_to_str(len(client.invalid)) + ''.join(client.invalid))
         client.invalid.clear()
-        tlen = u32(recv(s, 4))
-        if tlen == 0:
+        tdata = read_int4_str(s)
+        if len(tdata) == 0:
             return # client decided not to commit (e.g. conflict)
-        tdata = recv(s, tlen)
         logging_debug = is_logging(10)
-        logging_debug and log(10, 'Committing %s bytes', tlen)
+        logging_debug and log(10, 'Committing %s bytes', len(tdata))
         self.storage.begin()
         i = 0
         oids = []
         while i < len(tdata):
-            rlen = u32(tdata[i:i+4])
+            rlen = str_to_int4(tdata[i:i+4])
             i += 4
             oid = tdata[i:i+8]
             record = tdata[i+8:i+rlen]
             i += rlen
             if logging_debug:
                 class_name = extract_class_name(record)
-                log(10, '  oid=%-6s rlen=%-6s %s', u64(oid), rlen, class_name)
+                log(10, '  oid=%-6s rlen=%-6s %s',
+                    str_to_int8(oid), rlen, class_name)
             self.storage.store(oid, record)
             oids.append(oid)
         assert i == len(tdata)
@@ -344,12 +324,12 @@ class StorageServer (object):
             self.storage.end(handle_invalidations=self._handle_invalidations)
         except ConflictError:
             log(20, 'Conflict during commit')
-            sendall(s, STATUS_INVALID)
+            write(s, STATUS_INVALID)
         else:
             self._report_load_record()
             log(20, 'Committed %3s objects %s bytes at %s',
-                len(oids), tlen, datetime.now())
-            sendall(s, STATUS_OKAY)
+                len(oids), len(tdata), datetime.now())
+            write(s, STATUS_OKAY)
             client.unused_oids -= oid_set
             for c in self.clients:
                 if c is not client:
@@ -357,7 +337,7 @@ class StorageServer (object):
 
     def _report_load_record(self):
         if self.load_record and is_logging(5):
-            log(5, '\n'.join(
+            log(5, '[%s]\n' % getpid() + '\n'.join(
                  "%8s: %s" % (item[1], item[0])
                  for item in sorted(self.load_record.items())))
             self.load_record.clear()
@@ -375,7 +355,7 @@ class StorageServer (object):
         self._report_load_record()
         self._sync_storage()
         log(8, 'Sync %s', len(client.invalid))
-        sendall(s, p32(len(client.invalid)) + ''.join(client.invalid))
+        write(s, int4_to_str(len(client.invalid)) + ''.join(client.invalid))
         client.invalid.clear()
 
     def handle_P(self, s):
@@ -386,12 +366,12 @@ class StorageServer (object):
             if self.packer is None:
                 self.storage.pack()
                 log(20, 'Pack completed at %s' % datetime.now())
-        sendall(s, STATUS_OKAY)
+        write(s, STATUS_OKAY)
 
     def handle_B(self, s):
         # bulk read of objects
-        number_of_oids = u32(recv(s, 4))
-        oid_str = recv(s, 8 * number_of_oids)
+        number_of_oids = read_int4(s)
+        oid_str = read(s, 8 * number_of_oids)
         oids = split_oids(oid_str)
         for oid in oids:
             self._send_load_response(s, oid)
@@ -399,14 +379,15 @@ class StorageServer (object):
     def handle_Q(self, s):
         # graceful quit
         log(20, 'Quit')
+        self.storage.close()
         raise SystemExit
 
     def handle_V(self, s):
         # Verify protocol version match.
-        client_protocol = recv(s, 4)
-        log(10, 'Client Protocol: %s', u32(client_protocol))
+        client_protocol = read(s, 4)
+        log(10, 'Client Protocol: %s', str_to_int4(client_protocol))
         assert len(self.protocol) == 4
-        sendall(s, self.protocol)
+        write(s, self.protocol)
         if client_protocol != self.protocol:
             raise ClientError("Protocol not supported.")
 

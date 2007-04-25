@@ -108,9 +108,15 @@ class BNode (PersistentObject):
             child = self.nodes[position]
             if child.is_full():
                 self.split_child(position, child)
-                if key > self.items[position][0]:
-                    position += 1
-            self.nodes[position].insert_item(item)
+                if key == self.items[position][0]:
+                     self.items[position] = item
+                     self._p_note_change()
+                else:
+                     if key > self.items[position][0]:
+                         position += 1
+                     self.nodes[position].insert_item(item)
+            else:
+                self.nodes[position].insert_item(item)
 
     def split_child(self, position, child):
         """(position:int, child:BNode)
@@ -420,38 +426,51 @@ class BTree (PersistentObject):
         for item in reversed(self.root):
             yield item
 
-    def items_from(self, key):
-        """() -> generator
-        Generate all items with keys greater than or equal to the given key.
+    def items_from(self, key, closed=True):
+        """(key, closed=True) -> generator
+        If closed is true, generate all items with keys greater than or equal to
+        the given key.
+        If closed is false, generate all items with keys greater than the
+        given key.
         """
         for item in self.root.iter_from(key):
-            yield item
+            if closed or item[0] != key:
+                yield item
 
-    def items_backward_from(self, key):
-        """() -> generator
-        Generate in reverse order all items with keys less than the given key.
+    def items_backward_from(self, key, closed=False):
+        """(key, closed=False) -> generator
+        If closed is true, generate in reverse order all items with keys
+        less than or equal to the given key.
+        If closed is true, generate in reverse order all items with keys
+        less than the given key.
         """
+        if closed:
+            item = self.root.search(key)
+            if item is not None:
+                yield item
         for item in self.root.iter_backward_from(key):
             yield item
 
-    def items_range(self, start, end):
-        """() -> generator
-        Generate items with keys from start (inclusive) to end (exclusive).
-        The items are generated in the same order as start and end.
+    def items_range(self, start, end, closed_start=True, closed_end=False):
+        """(start, end, closed_start=True, closed_end=False) -> generator
+        Generate items with keys in the given range, from the start to the end.
+        If closed_start is true, include the item with the start key,
+        if it is present.
+        If closed_end is true, include the item with the end key,
+        if it is present.
         """
         if start <= end:
-            for item in self.items_from(start):
-                if item[0] >= end:
+            for item in self.items_from(start, closed=closed_start):
+                if item[0] > end:
                     break
-                yield item
+                if closed_end or item[0] < end:
+                    yield item
         else:
-            item_at_start =  item = self.root.search(start)
-            if item_at_start is not None:
-                yield item_at_start
-            for item in self.items_backward_from(start):
-                if item[0] <= end:
+            for item in self.items_backward_from(start, closed=closed_start):
+                if item[0] < end:
                     break
-                yield item
+                if closed_end or item[0] > end:
+                    yield item
 
     def note_change_of_bnode_containing_key(self, key):
         """()

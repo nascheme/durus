@@ -2,7 +2,7 @@
 $URL$
 $Id$
 """
-from durus.utils import format_oid
+from durus.utils import str_to_int8
 
 class DurusError (StandardError):
     """Durus error."""
@@ -11,7 +11,8 @@ class DurusKeyError (KeyError, DurusError):
     """Key not found in database."""
 
     def __str__(self):
-        return format_oid(self.args[0])
+        first_oid = self.oids[0]
+        return str(first_oid and str_to_int8(first_oid))
 
 
 class ConflictError (DurusError):
@@ -29,7 +30,8 @@ class ConflictError (DurusError):
                 s = "oids=[%s ...]"
             else:
                 s = "oids=[%s]"
-            return s % format_oid(self.oids[0])
+            first_oid = self.oids[0]
+            return s % (first_oid and str_to_int8(first_oid))
 
 
 class WriteConflictError (ConflictError):

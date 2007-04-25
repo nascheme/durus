@@ -6,7 +6,7 @@ from cPickle import dumps, loads
 from durus.connection import Connection
 from durus.file_storage import TempFileStorage
 from durus.persistent import Persistent, PersistentObject
-from durus.utils import p64
+from durus.utils import int8_to_str
 from sancho.utest import UTest, raises
 import sys
 
@@ -34,7 +34,7 @@ class TestPersistent (UTest):
         p=Persistent()
         p._p_oid
         assert p._p_format_oid() == 'None'
-        p._p_oid = p64(1)
+        p._p_oid = int8_to_str(1)
         assert p._p_format_oid() == '1'
         assert repr(p) == "<Persistent 1>"
 
@@ -82,26 +82,26 @@ class TestPersistent (UTest):
 class TestPersistentObject (UTest):
 
     def check_getstate(self):
-        p=PersistentObject()
+        p = PersistentObject()
         assert p.__getstate__() == {}
         raises(AttributeError, setattr, p, 'a', 1)
 
     def check_setstate(self):
-        p=PersistentObject()
+        p = PersistentObject()
         p.__setstate__({})
         raises(AttributeError, p.__setstate__, {'a':1})
 
     def check_change(self):
-        p=PersistentObject()
+        p = PersistentObject()
         p._p_changed == 0
         p._p_note_change()
         assert p._p_changed == True
 
     def check_accessors(self):
-        p=PersistentObject()
+        p = PersistentObject()
         p._p_oid
         assert p._p_format_oid() == 'None'
-        p._p_oid = p64(1)
+        p._p_oid = int8_to_str(1)
         assert p._p_format_oid() == '1'
         assert repr(p) == "<PersistentObject 1>"
 

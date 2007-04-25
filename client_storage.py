@@ -6,10 +6,11 @@ from durus.error import DurusKeyError, ProtocolError
 from durus.error import ReadConflictError, ConflictError, WriteConflictError
 from durus.serialize import split_oids
 from durus.storage import Storage
-from durus.storage_server import DEFAULT_PORT, DEFAULT_HOST, recv, sendall
+from durus.storage_server import DEFAULT_PORT, DEFAULT_HOST
 from durus.storage_server import SocketAddress, StorageServer
 from durus.storage_server import STATUS_OKAY, STATUS_KEYERROR, STATUS_INVALID
-from durus.utils import p32, u32
+from durus.utils import int4_to_str, read, write
+from durus.utils import read_int4, write_int4, write_int4_str
 
 
 class ClientStorage (Storage):
@@ -23,27 +24,32 @@ class ClientStorage (Storage):
         self.begin()
         protocol = StorageServer.protocol
         assert len(protocol) == 4
-        sendall(self.s, 'V' + protocol)
-        server_protocol = recv(self.s, 4)
+        write(self.s, 'V' + protocol)
+        server_protocol = read(self.s, 4)
         if server_protocol != protocol:
             raise ProtocolError("Protocol version mismatch.")
+
+    def __str__(self):
+        return "ClientStorage(%s)" % self.address
 
     def new_oid(self):
         if not self.oid_pool:
             batch = self.oid_pool_size
-            sendall(self.s, 'M%s' % chr(batch))
-            self.oid_pool = split_oids(recv(self.s, 8 * batch))
+            write(self.s, 'M%s' % chr(batch))
+            self.oid_pool = split_oids(read(self.s, 8 * batch))
             self.oid_pool.reverse()
+            assert len(self.oid_pool) == len(set(self.oid_pool))
         oid = self.oid_pool.pop()
+        assert oid not in self.oid_pool
         self.transaction_new_oids.append(oid)
         return oid
 
     def load(self, oid):
-        sendall(self.s, 'L' + oid)
+        write(self.s, 'L' + oid)
         return self._get_load_response(oid)
 
     def _get_load_response(self, oid):
-        status = recv(self.s, 1)
+        status = read(self.s, 1)
         if status == STATUS_OKAY:
             pass
         elif status == STATUS_INVALID:
@@ -52,8 +58,8 @@ class ClientStorage (Storage):
             raise DurusKeyError(oid)
         else:
             raise ProtocolError('status=%r, oid=%r' % (status, oid))
-        rlen = u32(recv(self.s, 4))
-        record = recv(self.s, rlen)
+        n = read_int4(self.s)
+        record = read(self.s, n)
         return record
 
     def begin(self):
@@ -62,34 +68,35 @@ class ClientStorage (Storage):
 
     def store(self, oid, record):
         assert len(oid) == 8
+        assert oid not in self.records
         self.records[oid] = record
 
     def end(self, handle_invalidations=None):
-        sendall(self.s, 'C')
-        n = u32(recv(self.s, 4))
+        write(self.s, 'C')
+        n = read_int4(self.s)
         oid_list = []
         if n != 0:
-            packed_oids = recv(self.s, n*8)
+            packed_oids = read(self.s, n*8)
             oid_list = split_oids(packed_oids)
             try:
                 handle_invalidations(oid_list)
             except ConflictError:
                 self.transaction_new_oids.reverse()
                 self.oid_pool.extend(self.transaction_new_oids)
+                assert len(self.oid_pool) == len(set(self.oid_pool))
                 self.begin() # clear out records and transaction_new_oids.
-                sendall(self.s, p32(0)) # Tell server we are done.
+                write_int4(self.s, 0) # Tell server we are done.
                 raise
         tdata = []
         for oid, record in self.records.iteritems():
-            tdata.append(p32(8 + len(record)))
+            tdata.append(int4_to_str(8 + len(record)))
             tdata.append(oid)
             tdata.append(record)
         tdata = ''.join(tdata)
-        sendall(self.s, p32(len(tdata)))
-        sendall(self.s, tdata)
+        write_int4_str(self.s, tdata)
         self.records.clear()
         if len(tdata) > 0:
-            status = recv(self.s, 1)
+            status = read(self.s, 1)
             if status == STATUS_OKAY:
                 pass
             elif status == STATUS_INVALID:
@@ -98,27 +105,29 @@ class ClientStorage (Storage):
                 raise ProtocolError('server returned invalid status %r' % status)
 
     def sync(self):
-        sendall(self.s, 'S')
-        n = u32(recv(self.s, 4))
+        write(self.s, 'S')
+        n = read_int4(self.s)
         if n == 0:
             packed_oids = ''
         else:
-            packed_oids = recv(self.s, n*8)
+            packed_oids = read(self.s, n*8)
         return split_oids(packed_oids)
 
     def pack(self):
-        sendall(self.s, 'P')
-        status = recv(self.s, 1)
+        write(self.s, 'P')
+        status = read(self.s, 1)
         if status != STATUS_OKAY:
             raise ProtocolError, 'server returned invalid status %r' % status
 
     def bulk_load(self, oids):
         oid_str = ''.join(oids)
-        num_oids = len(oid_str) / 8
-        sendall(self.s, 'B' + p32(num_oids) + oid_str)
-        for oid in oids:
-            yield self._get_load_response(oid)
+        num_oids, remainder = divmod(len(oid_str), 8)
+        assert remainder == 0, remainder
+        write(self.s, 'B' + int4_to_str(num_oids) + oid_str)
+        records = [self._get_load_response(oid) for oid in oids]
+        for record in records:
+            yield record
 
     def close(self):
-        sendall(self.s, '.') # Closes the server side.
+        write(self.s, '.') # Closes the server side.
         self.s.close()

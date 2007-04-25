@@ -11,6 +11,7 @@ from durus.storage_server import DEFAULT_PORT, DEFAULT_HOST, StorageServer
 from durus.storage_server import SocketAddress
 from durus.file_storage import FileStorage, TempFileStorage
 from durus.logger import log, logger, direct_output
+from time import sleep
 
 def get_storage(file, repair, readonly, masterhost, masterport):
     if masterport and file:
@@ -33,18 +34,27 @@ def start_durus(logfile, logginglevel, address, storage):
     logger.setLevel(logginglevel)
     socket_address = SocketAddress.new(address)
     if isinstance(storage, FileStorage):
-        log(20, 'Storage file=%s address=%s', storage.fp.name, socket_address)
+        log(20, 'Storage file=%s address=%s',
+            storage.get_filename(), socket_address)
     else:
         log(20, 'Storage master=%s address=%s', storage.address, socket_address)
     StorageServer(storage, address=socket_address).serve()
 
 def stop_durus(address):
-    sock = SocketAddress.new(address).get_connected_socket()
+    socket_address = SocketAddress.new(address)
+    sock = socket_address.get_connected_socket()
     if sock is None:
         raise SystemExit("Durus server %s doesn't seem to be running." %
                           str(address))
     sock.send('Q') # graceful exit message
     sock.close()
+    # Try to wait until the address is free.
+    for attempt in xrange(20):
+        sleep(0.5)
+        sock = socket_address.get_connected_socket()
+        if sock is None:
+            break
+        sock.close()
 
 def run_durus_main():
     parser = OptionParser()
