@@ -4,7 +4,7 @@ $Id$
 """
 from durus.utils import str_to_int8
 
-class DurusError (StandardError):
+class DurusError (Exception):
     """Durus error."""
 
 class DurusKeyError (KeyError, DurusError):

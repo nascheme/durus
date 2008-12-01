@@ -9,8 +9,9 @@ from durus.storage import Storage
 from durus.storage_server import DEFAULT_PORT, DEFAULT_HOST
 from durus.storage_server import SocketAddress, StorageServer
 from durus.storage_server import STATUS_OKAY, STATUS_KEYERROR, STATUS_INVALID
-from durus.utils import int4_to_str, read, write
-from durus.utils import read_int4, write_int4, write_int4_str
+from durus.utils import int4_to_str, read, write, join_bytes, write_all
+from durus.utils import read_int4, write_int4, write_int4_str, iteritems
+from durus.utils import as_bytes
 
 
 class ClientStorage (Storage):
@@ -24,7 +25,7 @@ class ClientStorage (Storage):
         self.begin()
         protocol = StorageServer.protocol
         assert len(protocol) == 4
-        write(self.s, 'V' + protocol)
+        write_all(self.s, 'V', protocol)
         server_protocol = read(self.s, 4)
         if server_protocol != protocol:
             raise ProtocolError("Protocol version mismatch.")
@@ -45,7 +46,7 @@ class ClientStorage (Storage):
         return oid
 
     def load(self, oid):
-        write(self.s, 'L' + oid)
+        write_all(self.s, 'L', oid)
         return self._get_load_response(oid)
 
     def _get_load_response(self, oid):
@@ -88,11 +89,11 @@ class ClientStorage (Storage):
                 write_int4(self.s, 0) # Tell server we are done.
                 raise
         tdata = []
-        for oid, record in self.records.iteritems():
+        for oid, record in iteritems(self.records):
             tdata.append(int4_to_str(8 + len(record)))
-            tdata.append(oid)
+            tdata.append(as_bytes(oid))
             tdata.append(record)
-        tdata = ''.join(tdata)
+        tdata = join_bytes(tdata)
         write_int4_str(self.s, tdata)
         self.records.clear()
         if len(tdata) > 0:
@@ -117,13 +118,13 @@ class ClientStorage (Storage):
         write(self.s, 'P')
         status = read(self.s, 1)
         if status != STATUS_OKAY:
-            raise ProtocolError, 'server returned invalid status %r' % status
+            raise ProtocolError('server returned invalid status %r' % status)
 
     def bulk_load(self, oids):
-        oid_str = ''.join(oids)
+        oid_str = join_bytes(oids)
         num_oids, remainder = divmod(len(oid_str), 8)
         assert remainder == 0, remainder
-        write(self.s, 'B' + int4_to_str(num_oids) + oid_str)
+        write_all(self.s, 'B', int4_to_str(num_oids), oid_str)
         records = [self._get_load_response(oid) for oid in oids]
         for record in records:
             yield record

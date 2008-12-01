@@ -2,8 +2,6 @@
 $URL$
 $Id$
 """
-from cPickle import loads
-from heapq import heappush, heappop
 from durus.error import ConflictError, WriteConflictError, ReadConflictError
 from durus.error import DurusKeyError
 from durus.logger import log
@@ -11,7 +9,8 @@ from durus.persistent import ConnectionBase, GHOST
 from durus.persistent_dict import PersistentDict
 from durus.serialize import ObjectReader, ObjectWriter
 from durus.serialize import unpack_record, pack_record
-from durus.utils import int8_to_str
+from durus.utils import int8_to_str, iteritems, loads, byte_string, as_bytes
+from heapq import heappush, heappop
 from itertools import islice, chain
 from os import getpid
 from time import time
@@ -38,7 +37,7 @@ class Connection (ConnectionBase):
     """
 
     def __init__(self, storage, cache_size=100000, root_class=None):
-        """(storage:Storage, cache_size:int=100000, 
+        """(storage:Storage|str, cache_size:int=100000, 
             root_class:class|None=None)
         Make a connection to `storage`.
         Set the target number of non-ghosted persistent objects to keep in
@@ -49,6 +48,9 @@ class Connection (ConnectionBase):
         Also, if the root_class is not None, verify that this really is the 
         class of the root object.  
         """
+        if isinstance(storage, str):
+            from durus.file_storage import FileStorage
+            storage = FileStorage(storage)
         assert isinstance(storage, durus.storage.Storage)
         self.storage = storage
         self.reader = ObjectReader(self)
@@ -58,7 +60,8 @@ class Connection (ConnectionBase):
         self.cache = Cache(cache_size)
         self.root = self.get(ROOT_OID)
         if self.root is None:
-            assert ROOT_OID == self.new_oid()
+            new_oid = self.new_oid()
+            assert ROOT_OID == new_oid
             self.root = self.get_cache().get_instance(
                 ROOT_OID, root_class or PersistentDict, self)
             self.root._p_set_status_saved()
@@ -114,7 +117,7 @@ class Connection (ConnectionBase):
             self._handle_invalidations(invalid_oids, read_oid=oid)
             record = self.storage.load(oid)
         oid2, data, refdata = unpack_record(record)
-        assert oid == oid2
+        assert as_bytes(oid) == oid2, (oid, oid2)
         return data
 
     def get(self, oid):
@@ -123,7 +126,7 @@ class Connection (ConnectionBase):
 
         The object may be a ghost.
         """
-        if type(oid) is not str:
+        if not isinstance(oid, byte_string):
             oid = int8_to_str(oid)
         obj = self.cache.get(oid)
         if obj is not None:
@@ -235,7 +238,7 @@ class Connection (ConnectionBase):
         """
         Abort uncommitted changes, sync, and try to shrink the cache.
         """
-        for oid, obj in self.changed.iteritems():
+        for oid, obj in iteritems(self.changed):
             obj._p_set_status_ghost()
         self.changed.clear()
         self._sync()
@@ -254,7 +257,7 @@ class Connection (ConnectionBase):
             assert not self.invalid_oids, "still conflicted: missing abort()"
             self.storage.begin()
             new_objects = {}
-            for oid, changed_object in self.changed.iteritems():
+            for oid, changed_object in iteritems(self.changed):
                 writer = ObjectWriter(self)
                 try:
                     for obj in writer.gen_new_objects(changed_object):
@@ -271,8 +274,8 @@ class Connection (ConnectionBase):
                     writer.close()
             try:
                 self.storage.end(self._handle_invalidations)
-            except ConflictError, exc:
-                for oid, obj in new_objects.iteritems():
+            except ConflictError:
+                for oid, obj in iteritems(new_objects):
                     obj._p_oid = None
                     del self.cache[oid]
                     obj._p_set_status_unsaved()
@@ -356,11 +359,30 @@ class ObjectDictionary (object):
                 yield key
 
 
+class ReferenceContainer (object):
+    """
+    This is used to hold hard references to recently used instances.
+    """
+    def __init__(self):
+        self.map = {}
+
+    def __len__(self):
+        return len(self.map)
+
+    def add(self, x):
+        self.map[id(x)] = x
+
+    def discard(self, x):
+        key = id(x)
+        if key in self.map:
+            del self.map[key]
+
+
 class Cache (object):
 
     def __init__(self, size):
         self.objects = ObjectDictionary()
-        self.recent_objects = set()
+        self.recent_objects = ReferenceContainer()
         self.set_size(size)
         self.finger = 0
 
@@ -374,7 +396,7 @@ class Cache (object):
 
     def set_size(self, size):
         if size <= 0:
-            raise ValueError, 'cache target size must be > 0'
+            raise ValueError('cache target size must be > 0')
         self.size = size
 
     def get_instance(self, oid, klass, connection):
@@ -390,7 +412,7 @@ class Cache (object):
         # if self.get(oid) is not None: return self.get(oid)
         objects = self.objects
         obj = objects.get(oid)
-        if obj is None:
+        if obj is None or obj.__class__ is not klass:
             # Make a new ghost.
             obj = klass.__new__(klass)
             obj._p_oid = oid
@@ -403,7 +425,6 @@ class Cache (object):
         return self.objects.get(oid)
 
     def __setitem__(self, key, obj):
-        assert key not in self.objects or self.objects[key] is obj
         self.objects[key] = obj
 
     def __delitem__(self, key):
@@ -459,6 +480,11 @@ class Cache (object):
             getpid(), time() - start_time, current - len(self.objects),
             num_ghosted, len(self.objects), len(self.recent_objects))
 
+    def __iter__(self):
+        get = self.objects.get
+        for key in self.objects:
+            yield get(key)
+
 
 def touch_every_reference(connection, *words):
     """(connection:Connection, *words:(str))
@@ -468,6 +494,7 @@ def touch_every_reference(connection, *words):
     """
     get = connection.get
     reader = ObjectReader(connection)
+    words = [as_bytes(w) for w in words]
     for oid, record in connection.get_storage().gen_oid_record():
         record_oid, data, refs = unpack_record(record)
         state = reader.get_state_pickle(data)

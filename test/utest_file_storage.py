@@ -6,15 +6,21 @@ from durus.connection import Connection
 from durus.file import File
 from durus.file_storage import TempFileStorage, FileStorage
 from durus.file_storage import ShelfStorage
+from durus.logger import direct_output
 from durus.persistent import Persistent
 from durus.serialize import pack_record
-from durus.utils import int8_to_str, ShortRead, write_int4_str
+from durus.utils import int8_to_str, ShortRead, write_int4_str, as_bytes
 from os import unlink
 from sancho.utest import UTest, raises
 from tempfile import mktemp
+import os
+import sys
 
 
 class FileStorageTest (UTest):
+
+    def _pre(self):
+        direct_output(sys.stdout)
 
     def check_file_storage(self):
         name = mktemp()
@@ -23,22 +29,24 @@ class FileStorageTest (UTest):
         assert b.new_oid() == int8_to_str(1)
         assert b.new_oid() == int8_to_str(2)
         raises(KeyError, b.load, int8_to_str(0))
-        record = pack_record(int8_to_str(0), 'ok', '')
+        record = pack_record(int8_to_str(0), as_bytes('ok'), as_bytes(''))
         b.begin()
         b.store(int8_to_str(0), record)
         b.end()
         b.sync()
         b.begin()
-        b.store(int8_to_str(1), pack_record(int8_to_str(1), 'no', ''))
+        b.store(int8_to_str(1), pack_record(
+            int8_to_str(1), as_bytes('no'), as_bytes('')))
         b.end()
-        assert b.get_size() in (2, None)
         assert len(list(b.gen_oid_record(start_oid=int8_to_str(0)))) == 1
         assert len(list(b.gen_oid_record())) == 2
-        c = FileStorage(name, readonly=True)
-        raises(AssertionError, c.pack)
+        if os.name != 'nt': # don't try to re-open an open file on windows
+            c = FileStorage(name, readonly=True)
+            raises(AssertionError, c.pack)
         b.pack()
         b.close()
-        c.close()
+        if os.name != 'nt':
+            c.close()
         unlink(name + '.prepack')
         raises(ValueError, b.pack) # storage closed
         unlink(name + '.pack')
@@ -48,6 +56,8 @@ class FileStorageTest (UTest):
     def check_reopen(self):
         f = TempFileStorage()
         filename = f.get_filename()
+        if os.name == 'nt':
+            f.close() # don't try to re-open an open file on windows
         g = FileStorage(filename)
 
     def check_open_empty(self):
@@ -76,14 +86,13 @@ class FileStorageTest (UTest):
 
     def check_bad_record_size(self):
         name = mktemp()
-        f = open(name, 'w')
+        f = open(name, 'wb')
         g = FileStorage(name)
         f.seek(0, 2)
         write_int4_str(f, 'ok')
-        f.flush()
-        raises(ShortRead, FileStorage, name)
         g.close()
         f.close()
+        raises(ShortRead, FileStorage, name)
         unlink(name)
 
     def check_repair(self):
@@ -93,7 +102,7 @@ class FileStorageTest (UTest):
         f = open(name, 'r+b')
         f.seek(0, 2)
         p = f.tell()
-        f.write('b')
+        f.write(as_bytes('b'))
         f.flush()
         raises(ShortRead, FileStorage, name)
         h = FileStorage(name, repair=True)
@@ -108,7 +117,9 @@ class ShelfStorageTest (UTest):
 
     def a(self):
         f = File(prefix='shelftest')
-        s = ShelfStorage(f.get_name())
+        name = f.get_name()
+        f.close()
+        s = ShelfStorage(name)
         c = Connection(s)
         r = c.get_root()
         for x in range(10):
@@ -144,7 +155,9 @@ class ShelfStorageTest (UTest):
 
     def b(self):
         f = File(prefix='shelftest')
-        s = ShelfStorage(f.get_name())
+        name = f.get_name()
+        f.close()
+        s = ShelfStorage(name)
         c = Connection(s)
         r = c.get_root()
         for x in range(10):
@@ -163,7 +176,9 @@ class ShelfStorageTest (UTest):
 
     def c(self):
         f = File(prefix='shelftest')
-        s = ShelfStorage(f.get_name())
+        name = f.get_name()
+        f.close()
+        s = ShelfStorage(name)
         c = Connection(s)
         r = c.get_root()
         for x in range(10):

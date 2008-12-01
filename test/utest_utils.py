@@ -2,19 +2,19 @@
 $URL$
 $Id$
 """
-from cStringIO import StringIO
 from durus.file import File
+from durus.utils import Byte, ByteArray, BitArray, IntArray, WordArray, IntSet
 from durus.utils import read, write
+from durus.utils import read_int4, write_int4
+from durus.utils import read_int4_str, write_int4_str
+from durus.utils import read_int8, write_int8
+from durus.utils import read_int8_str, write_int8_str
+from durus.utils import ShortRead, xrange, iteritems, BytesIO, as_bytes
 from durus.utils import str_to_int4, int4_to_str
 from durus.utils import str_to_int8, int8_to_str
-from durus.utils import read_int4, write_int4
-from durus.utils import read_int8, write_int8
-from durus.utils import read_int4_str, write_int4_str
-from durus.utils import read_int8_str, write_int8_str
-from durus.utils import ShortRead
-from durus.utils import Byte, ByteArray, BitArray, IntArray, WordArray, IntSet
 from sancho.utest import UTest, raises
 import durus.utils
+
 
 class UtilTest (UTest):
 
@@ -29,15 +29,16 @@ class UtilTest (UTest):
             assert x == str_to_int4(int4_to_str(x))
 
     def b(self):
-        s = StringIO()
+        s = BytesIO()
         for x in ('', 'a', 'ab', 'a' * 1000):
+            x = as_bytes(x)
             s.seek(0)
             write(s, x)
             s.seek(0)
             assert x == read(s, len(x))
 
     def read_write_int4(self):
-        s = StringIO()
+        s = BytesIO()
         for x in (0, 1, 2**30):
             s.seek(0)
             write_int4(s, x)
@@ -45,7 +46,7 @@ class UtilTest (UTest):
             assert x == read_int4(s)
 
     def read_write_int8(self):
-        s = StringIO()
+        s = BytesIO()
         for x in (0, 1, 2**60):
             s.seek(0)
             write_int8(s, x)
@@ -53,17 +54,19 @@ class UtilTest (UTest):
             assert x == read_int8(s)
 
     def d(self):
-        s = StringIO()
+        s = BytesIO()
         for x in ('', 'a', 'ab', 'a' * 1000):
+            x = as_bytes(x)
             s.seek(0)
             write_int4_str(s, x)
             s.seek(0)
             assert x == read_int4_str(s)
 
     def e(self):
-        s = StringIO()
+        s = BytesIO()
         durus.utils.TRACE = True
         for x in ('', 'a', 'ab', 'a' * 1000):
+            x = as_bytes(x)
             s.seek(0)
             write_int8_str(s, x)
             s.seek(0)
@@ -74,10 +77,10 @@ class UtilTest (UTest):
         class FakeSocket(object):
             def recv(self, n):
                 if n > 10:
-                    return ''
-                return 'x'
-            def sendall(self, s):
-                return
+                    return as_bytes('')
+                return as_bytes('x')
+            def send(self, s):
+                return len(s)
         s = FakeSocket()
         write(s, 'x' * 2000000)
         read(s, 8)
@@ -87,39 +90,42 @@ class UtilTest (UTest):
 class ByteArrayTest (UTest):
 
     def a(self):
-        s = StringIO()
-        b = ByteArray(50, file=s)
-        assert list(b) == ['\x00' for j in xrange(50)], list(b)
-        for j in xrange(50):
-            assert '\x00' == b[j]
-        for j in xrange(50):
-            b[j] = '!'
-        for j in xrange(50):
-            assert '!' == b[j]
-        assert b[0:3] == '!!!'
-        assert b[47:50] == '!!!', repr(b[47:50])
+        s = BytesIO()
+        b = ByteArray(size=10000, file=s)
+        assert list(b) == [as_bytes('\x00') for j in xrange(10000)], list(b)
+        for j in xrange(10000):
+            assert as_bytes('\x00') == b[j]
+        for j in xrange(10000):
+            b[j] = as_bytes('!')
+        for j in xrange(10000):
+            assert as_bytes('!') == b[j]
+        assert b[0:3] == as_bytes('!!!')
+        assert b[47:50] == as_bytes('!!!'), repr(b[47:50])
+        s = BytesIO()
+        b2 = ByteArray(file=s)
+        b2.set_size(10000, init_byte=as_bytes('\xff'))
+        for j in xrange(10000):
+            assert as_bytes('\xff') == b2[j], (j, b2[j])
         s.seek(0)
-        b2 = ByteArray(50, file=s)
-        assert s.getvalue() == str(b2)
-        s.seek(0)
-        raises(AssertionError, ByteArray, 60, file=s)
+        raises(AssertionError, ByteArray, size=20000, file=s)
+
 
     def b(self):
-        b = ByteArray(50)
+        b = ByteArray(size=50)
         raises(IndexError, b.__getitem__, 50)
-        raises(IndexError, b.__setitem__, 50, 'x')
-        raises(ValueError, b.__setitem__, 1, 'xx')
-        raises(ValueError, b.__setitem__, 1, '')
+        raises(IndexError, b.__setitem__, 50, as_bytes('x'))
+        raises(ValueError, b.__setitem__, 1, as_bytes('xx'))
+        raises(ValueError, b.__setitem__, 1, as_bytes(''))
         raises(IndexError, b.__getslice__, 0, 51)
-        raises(IndexError, b.__setslice__, 0, 51, 'x' * 51)
-        raises(ValueError, b.__setslice__, 0, 50, 'x' * 49)
-
+        raises(IndexError, b.__setslice__, 0, 51, as_bytes('x') * 51)
+        raises(ValueError, b.__setslice__, 0, 50, as_bytes('x') * 49)
 
 class WordArrayTest (UTest):
 
     def a(self):
         for sample in (['a'], ['a', 'b'], ['ab', 'cd', 'ef']):
-            s = StringIO()
+            sample = [as_bytes(x) for x in sample]
+            s = BytesIO()
             number_of_words = len(sample)
             bytes_per_word = 0
             if sample:
@@ -130,7 +136,6 @@ class WordArrayTest (UTest):
                 number_of_words=number_of_words)
             for j, word in enumerate(sample):
                 word_array[j] = word
-            print word_array.__dict__
             assert list(word_array) == sample, (list(word_array), sample)
         assert raises(ValueError, word_array.__setitem__, 1, 'sdf')
         assert raises(IndexError, word_array.__setitem__, 10, 'sf')
@@ -138,7 +143,7 @@ class WordArrayTest (UTest):
 
     def b(self):
         n = 1000
-        s = StringIO()
+        s = BytesIO()
         word_array = WordArray(file=s, bytes_per_word=8, number_of_words=n)
         for x in xrange(n):
             word_array[x] = int8_to_str(x)
@@ -151,13 +156,13 @@ class WordArrayTest (UTest):
         assert raises(IndexError, word_array.__getitem__, n + 1)
         s.seek(0)
         word_array2 = WordArray(file=s)
-        word_array2[-1] = 'mmmmmmmm'
-        assert word_array2[-1] == 'mmmmmmmm'
+        word_array2[-1] = as_bytes('mmmmmmmm')
+        assert word_array2[-1] == as_bytes('mmmmmmmm')
 
     def c(self):
-        s = StringIO('asdfasdfadsf')
+        s = BytesIO(as_bytes('asdfasdfadsf'))
         s.seek(0)
-        assert raises(ValueError, WordArray, file=s)
+        assert raises(ShortRead, WordArray, file=s)
 
     def d(self):
         file = File()
@@ -169,17 +174,16 @@ class WordArrayTest (UTest):
 class IntArrayTest (UTest):
 
     def a(self):
-        s = StringIO()
+        s = BytesIO()
         for sample in ([], [0], [2, 1], range(7)):
             int_array = IntArray(file=s, number_of_ints=10, maximum_int=10)
             for j, x in enumerate(sample):
                 int_array[j] = x
-            print int_array.__dict__
             non_blanks = set(int_array)
             non_blanks.discard(int_array.get_blank_value())
             assert set(sample) == non_blanks, (list(int_array), sample)
         assert raises(IndexError, int_array.__getitem__, 10)
-        int_array2 = IntArray(file=StringIO(s.getvalue()))
+        int_array2 = IntArray(file=BytesIO(s.getvalue()))
         int_array3 = IntArray(number_of_ints=10, maximum_int=300)
         for x in range(10):
             assert int_array3.get(x) == None
@@ -191,16 +195,17 @@ class IntArrayTest (UTest):
         int_array4 = IntArray(number_of_ints=10)
         assert int_array4.get(1, default=42) == 42
         assert int_array4.get(100, default=42) == 42
-        assert list(int_array4.iteritems()) == []
+        assert list(iteritems(int_array4)) == []
         int_array4[3] = 4
         int_array4[8] = 9
-        assert list(int_array4.iteritems()) == [(3, 4), (8, 9)]
+        assert list(iteritems(int_array4)) == [(3, 4), (8, 9)]
 
     def b(self):
         file = File()
         int_array = IntArray(file=file, number_of_ints=10, maximum_int=10)
         file.seek(0)
-        int_array2 = IntArray(file=file, number_of_ints=10, maximum_int=10)
+        int_array2 = IntArray(file=file)
+        assert len(int_array2) == 10
 
     def c(self):
         file = File()

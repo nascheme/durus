@@ -2,19 +2,20 @@
 $URL$
 $Id$
 """
-try:
-    import setuptools
-    used = setuptools # to quiet import checker.
-except ImportError:
-    pass
-
-import os
-from distutils.core import setup
-from distutils.extension import Extension
 from __init__ import __version__
-import re, sys
+import re, sys, os
+assert sys.version >= "2.4"
+
+try:
+    from setuptools import setup, Extension
+except ImportError:
+    from distutils.core import setup
+    from distutils.extension import Extension
 
 if 'sdist' in sys.argv:
+    if sys.platform == 'darwin':
+        # Omit extended attributes from tarfile
+        os.environ['COPYFILE_DISABLE'] = 'true'
     # Make sure that version numbers have all been updated.
     PAT = re.compile(r'\b%s\b' % re.escape(__version__))
     assert len(PAT.findall(open("LICENSE.txt").read())) == 14, __version__
@@ -24,7 +25,8 @@ if 'sdist' in sys.argv:
     # Make sure that copyright statements are current.
     from datetime import datetime
     year = datetime.now().year
-    copyright = "Copyright (c) Corporation for National Research Initiatives %s" % year
+    copyright = \
+        "Copyright (c) Corporation for National Research Initiatives %s" % year
     assert open("__init__.py").read().count(copyright) == 1
     assert open("README.txt").read().count(copyright) == 1
 

@@ -11,7 +11,7 @@ class PersistentList (PersistentObject):
     """
     __slots__ = ['data']
 
-    data_is = list
+    data_is = list # for type checking using QP's spec module
 
     def __init__(self, *args, **kwargs):
         self.data = list(*args, **kwargs)
@@ -21,25 +21,25 @@ class PersistentList (PersistentObject):
         else: return other
 
     def __lt__(self, other):
-        return self.data <  self.__cast(other)
+        return self is not other and self.data <  self.__cast(other)
 
     def __le__(self, other):
-        return self.data <= self.__cast(other)
+        return self is other or self.data <= self.__cast(other)
 
     def __eq__(self, other):
-        return self.data == self.__cast(other)
+        return self is other or self.data == self.__cast(other)
 
     def __ne__(self, other):
-        return self.data != self.__cast(other)
+        return self is not other and self.data != self.__cast(other)
 
     def __gt__(self, other):
-        return self.data >  self.__cast(other)
+        return self is not other and self.data >  self.__cast(other)
 
     def __ge__(self, other):
-        return self.data >= self.__cast(other)
+        return self is other or self.data >= self.__cast(other)
 
-    def __cmp__(self, other):
-        return cmp(self.data, self.__cast(other))
+    # def __cmp__(self, other):
+    #     return cmp(self.data, self.__cast(other))
 
     def __contains__(self, item):
         return item in self.data
@@ -59,12 +59,10 @@ class PersistentList (PersistentObject):
         del self.data[i]
 
     def __getslice__(self, i, j):
-        i = max(i, 0); j = max(j, 0)
         return self.__class__(self.data[i:j])
 
     def __setslice__(self, i, j, other):
         self._p_note_change()
-        i = max(i, 0); j = max(j, 0)
         if isinstance(other, PersistentList):
             self.data[i:j] = other.data
         elif isinstance(other, type(self.data)):
@@ -74,7 +72,6 @@ class PersistentList (PersistentObject):
 
     def __delslice__(self, i, j):
         self._p_note_change()
-        i = max(i, 0); j = max(j, 0)
         del self.data[i:j]
 
     def __add__(self, other):
@@ -137,9 +134,9 @@ class PersistentList (PersistentObject):
         self._p_note_change()
         self.data.reverse()
 
-    def sort(self, *args):
+    def sort(self, *args, **kwargs):
         self._p_note_change()
-        self.data.sort(*args)
+        self.data.sort(*args, **kwargs)
 
     def extend(self, other):
         self._p_note_change()

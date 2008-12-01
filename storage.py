@@ -66,12 +66,6 @@ class Storage (object):
         """If this storage supports it, remove obsolete records."""
         return None
 
-    def get_size(self):
-        """() -> int | None
-        Return the number of objects available, or None if the number is not known.
-        """
-        return None
-
     def bulk_load(self, oids):
         """(oids:sequence(oid:str)) -> sequence(record:str)
         """

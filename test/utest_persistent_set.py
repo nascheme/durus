@@ -2,8 +2,8 @@
 $URL$
 $Id$
 """
-from sancho.utest import UTest, raises
 from durus.persistent_set import PersistentSet
+from sancho.utest import UTest, raises
 
 set_type = None
 other_type = None
@@ -24,11 +24,6 @@ class SetTest (UTest):
         assert set(s1 & s2) == set(s1)
         s1 = set_type(['j', 'k'])
         assert set(s1 & s2) == set(s2)
-
-    def test__cmp__(self):
-        s1 = set_type()
-        s2 = other_type()
-        raises(TypeError, s1.__cmp__, s2)
 
     def test__contains__(self):
         s1 = set_type()
@@ -90,7 +85,6 @@ class SetTest (UTest):
     def test__iand__(self):
         s1 = set_type()
         s2 = other_type()
-        print s1, s2, s1.__iand__(s2)
         assert s1.__iand__(s2) == set_type()
         s2 = other_type(['k'])
         assert s1.__iand__(s2) == s1
@@ -197,7 +191,7 @@ class SetTest (UTest):
         s3 = set_type('a')
         assert s1 != s3
         assert s3 != s1
-        assert s1 <> s3
+        assert s1 != s3
 
     def test__or__(self):
         s1 = set_type()

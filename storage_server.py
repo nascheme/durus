@@ -7,26 +7,30 @@ from durus.error import ReadConflictError, ConflictError
 from durus.logger import log, is_logging
 from durus.serialize import extract_class_name, split_oids
 from durus.utils import int4_to_str, str_to_int4, str_to_int8, read, write
-from durus.utils import read_int4, read_int4_str, write_int4_str
-from grp import getgrnam, getgrgid
-from os import unlink, stat, chown, geteuid, getegid, umask, getpid
+from durus.utils import read_int4, read_int4_str, write_int4_str, xrange
+from durus.utils import join_bytes, write_all, next, as_bytes
 from os.path import exists
-from pwd import getpwnam, getpwuid
 from time import sleep
 import errno
 import select
 import socket
+import sys
+
+import os
+if os.name != 'nt':
+   from grp import getgrnam, getgrgid
+   from os import unlink, stat, chown, geteuid, getegid, umask, getpid
+   from pwd import getpwnam, getpwuid
 
 
-STATUS_OKAY = 'O'
-STATUS_KEYERROR = 'K'
-STATUS_INVALID = 'I'
+STATUS_OKAY = as_bytes('O')
+STATUS_KEYERROR = as_bytes('K')
+STATUS_INVALID = as_bytes('I')
 
 TIMEOUT = 10
 DEFAULT_HOST = '127.0.0.1'
 DEFAULT_PORT = 2972
-
-
+DEFAULT_GCBYTES = 0
 
 class _Client (object):
 
@@ -45,13 +49,11 @@ class SocketAddress (object):
     def new(address, **kwargs):
         if isinstance(address, SocketAddress):
             return address
-        elif type(address) is tuple:
+        elif isinstance(address, tuple):
             host, port = address
             return HostPortAddress(host=host, port=port)
-        elif type(address) is str:
-            return UnixDomainSocketAddress(address, **kwargs)
         else:
-            raise ValueError(address)
+            return UnixDomainSocketAddress(address, **kwargs)
     new = staticmethod(new)
 
     def get_listening_socket(self):
@@ -81,7 +83,8 @@ class HostPortAddress (SocketAddress):
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         try:
             sock.connect((self.host, self.port))
-        except socket.error, exc:
+        except socket.error:
+            exc = sys.exc_info()[1]
             error = exc.args[0]
             if error == errno.ECONNREFUSED:
                 return None
@@ -129,7 +132,8 @@ class UnixDomainSocketAddress (SocketAddress):
             old_umask = umask(self.umask)
         try:
             s.bind(self.filename)
-        except socket.error, exc:
+        except socket.error:
+            exc = sys.exc_info()[1]
             error = exc.args[0]
             if not exists(self.filename):
                 raise
@@ -146,13 +150,13 @@ class UnixDomainSocketAddress (SocketAddress):
                 raise
         uid = geteuid()
         if self.owner is not None:
-            if type(self.owner) is int:
+            if isinstance(self.owner, int):
                 uid = self.owner
             else:
                 uid = getpwnam(self.owner).pw_uid
         gid = getegid()
         if self.group is not None:
-            if type(self.group) is int:
+            if isinstance(self.group, int):
                 gid = self.group
             else:
                 gid = getgrnam(self.group).gr_gid
@@ -165,7 +169,8 @@ class UnixDomainSocketAddress (SocketAddress):
         sock = socket.socket(self.get_address_family(), socket.SOCK_STREAM)
         try:
             sock.connect(self.filename)
-        except socket.error, exc:
+        except socket.error:
+            exc = sys.exc_info()[1]
             error = exc.args[0]
             if error in (errno.ENOENT, errno.ENOTSOCK, errno.ECONNREFUSED):
                 return None
@@ -186,19 +191,21 @@ class StorageServer (object):
 
     protocol = int4_to_str(1)
 
-    def __init__(self, storage, host=DEFAULT_HOST,
-                 port=DEFAULT_PORT, address=None):
+    def __init__(self, storage, host=DEFAULT_HOST, port=DEFAULT_PORT, 
+        address=None, gcbytes=DEFAULT_GCBYTES):
         self.storage = storage
         self.clients = []
         self.sockets = []
         self.packer = None
         self.address = SocketAddress.new(address or (host, port))
         self.load_record = {}
+        self.bytes_since_pack = 0
+        self.gcbytes = gcbytes # Trigger a pack after this many bytes.
+        assert isinstance(gcbytes, (int, float))
 
     def serve(self):
         sock = self.address.get_listening_socket()
-        log(20, 'Ready on %s with %s objects', self.address,
-            self.storage.get_size())
+        log(20, 'Ready on %s', self.address)
         self.sockets.append(sock)
         try:
             while 1:
@@ -219,21 +226,35 @@ class StorageServer (object):
                         try:
                             self.handle(s)
                         except (ClientError, socket.error, socket.timeout,
-                            IOError), exc:
+                            IOError):
+                            exc = sys.exc_info()[1]
                             log(10, '%s', ''.join(map(str, exc.args)))
                             self.sockets.remove(s)
                             self.clients.remove(self._find_client(s))
-                if self.packer is not None:
+                            s.close()
+                if (self.packer is None and
+                    0 < self.gcbytes <= self.bytes_since_pack):
+                    self.packer = self.storage.get_packer()
+                    if self.packer is not None:
+                        log(20, 'gc started at %s' % datetime.now())
+                if not r and self.packer is not None:
                     try:
-                        self.packer.next()
+                        pack_step = next(self.packer)
+                        if isinstance(pack_step, str):
+                            log(15, 'gc ' + pack_step)
                     except StopIteration:
-                        log(20, 'Pack finished at %s' % datetime.now())
+                        log(20, 'gc at %s' % datetime.now())
                         self.packer = None # done packing
+                        self.bytes_since_pack = 0 # reset
         finally:
             self.address.close(sock)
 
     def handle(self, s):
-        command_code = read(s, 1)
+        command_byte = read(s, 1)[0]
+        if type(command_byte) is int:
+            command_code = chr(command_byte)
+        else:
+            command_code = command_byte
         handler = getattr(self, 'handle_%s' % command_code, None)
         if handler is None:
             raise ClientError('No such command code: %r' % command_code)
@@ -258,7 +279,7 @@ class StorageServer (object):
         # new OIDs
         count = ord(read(s, 1))
         log(10, "oids: %s", count)
-        write(s, ''.join(self._new_oids(s, count)))
+        write(s, join_bytes(self._new_oids(s, count)))
 
     def handle_L(self, s):
         # load
@@ -292,7 +313,8 @@ class StorageServer (object):
         # commit
         self._sync_storage()
         client = self._find_client(s)
-        write(s, int4_to_str(len(client.invalid)) + ''.join(client.invalid))
+        write_all(s,
+            int4_to_str(len(client.invalid)), join_bytes(client.invalid))
         client.invalid.clear()
         tdata = read_int4_str(s)
         if len(tdata) == 0:
@@ -334,6 +356,7 @@ class StorageServer (object):
             for c in self.clients:
                 if c is not client:
                     c.invalid.update(oids)
+            self.bytes_since_pack += len(tdata) + 8
 
     def _report_load_record(self):
         if self.load_record and is_logging(5):
@@ -355,17 +378,20 @@ class StorageServer (object):
         self._report_load_record()
         self._sync_storage()
         log(8, 'Sync %s', len(client.invalid))
-        write(s, int4_to_str(len(client.invalid)) + ''.join(client.invalid))
+        write_all(s,
+            int4_to_str(len(client.invalid)), join_bytes(client.invalid))
         client.invalid.clear()
 
     def handle_P(self, s):
         # pack
-        log(20, 'Pack started at %s' % datetime.now())
         if self.packer is None:
+            log(20, 'Pack started at %s' % datetime.now())
             self.packer = self.storage.get_packer()
             if self.packer is None:
                 self.storage.pack()
                 log(20, 'Pack completed at %s' % datetime.now())
+        else:
+            log(20, 'Pack already in progress at %s' % datetime.now())
         write(s, STATUS_OKAY)
 
     def handle_B(self, s):

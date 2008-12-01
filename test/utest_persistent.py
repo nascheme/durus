@@ -2,15 +2,19 @@
 $URL$
 $Id$
 """
-from cPickle import dumps, loads
 from durus.connection import Connection
 from durus.file_storage import TempFileStorage
+from durus.logger import direct_output
 from durus.persistent import Persistent, PersistentObject
-from durus.utils import int8_to_str
+from durus.utils import int8_to_str, dumps, loads
 from sancho.utest import UTest, raises
 import sys
 
+
 class TestPersistent (UTest):
+
+    def _pre(self):
+        direct_output(sys.stdout)
 
     def check_getstate(self):
         p=Persistent()
@@ -24,16 +28,12 @@ class TestPersistent (UTest):
         p.__setstate__({'a':1})
         assert p.a == 1
 
-    def check_change(self):
-        p=Persistent()
-        p._p_changed == 0
-        p._p_note_change()
-        assert p._p_changed == True
-
     def check_accessors(self):
         p=Persistent()
         p._p_oid
         assert p._p_format_oid() == 'None'
+        p._p_oid = 'aaaaaaaa'
+        assert p._p_format_oid() == '7016996765293437281'
         p._p_oid = int8_to_str(1)
         assert p._p_format_oid() == '1'
         assert repr(p) == "<Persistent 1>"
@@ -93,9 +93,7 @@ class TestPersistentObject (UTest):
 
     def check_change(self):
         p = PersistentObject()
-        p._p_changed == 0
         p._p_note_change()
-        assert p._p_changed == True
 
     def check_accessors(self):
         p = PersistentObject()

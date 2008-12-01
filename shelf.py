@@ -2,9 +2,11 @@
 $URL$
 $Id$
 """
-from durus.utils import read, read_int8, write, write_int8, ShortRead
-from durus.utils import int8_to_str, str_to_int8, read_int8_str, IntArray
 from durus.file import File
+from durus.utils import int8_to_str, str_to_int8, read_int8_str, IntArray
+from durus.utils import iteritems, next, as_bytes
+from durus.utils import read, read_int8, write, write_int8, ShortRead, xrange
+import sys
 
 
 class Shelf (object):
@@ -58,7 +60,7 @@ class Shelf (object):
     After the initial construction of a Shelf is completed, all subsequent
     writing happens at the end of the file.
     """
-    prefix = "SHELF-1\n"
+    prefix = as_bytes("SHELF-1\n")
 
     def __init__(self, file=None, items=None, repair=False, readonly=False):
         """(File:str:None, [(str:str)], boolean)
@@ -67,12 +69,11 @@ class Shelf (object):
             file = File()
             assert not readonly
             assert not repair
-        elif type(file) is str:
+        elif not hasattr(file, 'seek'):
             file = File(file, readonly=readonly)
         file.seek(0, 2) # seek end
         if file.tell() == 0:
             # The file is empty.
-            assert not repair
             for result in self.generate_shelf(file=file, items=items or []):
                 pass
         else:
@@ -145,7 +146,9 @@ class Shelf (object):
             write_int8(file, transaction_end - transaction_start - 8)
             # Write the empty array with the calculated dimensions.
             file.seek(transaction_end)
-            offset_map = OffsetMap(file, max_key, max_offset)
+            for step in OffsetMap.generate(file, max_key, max_offset):
+                yield step
+            offset_map = OffsetMap(file)
             # Now read through the records and record the offsets in the array.
             file.seek(transaction_start + 8)
             while file.tell() < transaction_end:
@@ -157,7 +160,8 @@ class Shelf (object):
                 file.seek(position + 8 + record_length)
                 n -= 1
                 yield n
-        offset_map.stitch()
+        for index in offset_map.gen_stitch():
+            yield index
 
     def next_name(self):
         """() -> str
@@ -179,7 +183,7 @@ class Shelf (object):
                         yield name
                     j += 1
             self.unused_name_generator = generate_unused_names()
-        return self.unused_name_generator.next()
+        return next(self.unused_name_generator)
 
     def store(self, name_value_sequence):
         """([(str, str)]) -> [(str, int|None, int)]
@@ -217,7 +221,7 @@ class Shelf (object):
         """(str) -> int
         Return the position of the most recent value with this name.
         """
-        if not (isinstance(name, basestring) and len(name) == 8):
+        if len(name) != 8:
             raise ValueError("Expected a string with 8 bytes.")
         p = self.memory_index.get(name, None)
         if p is not None:
@@ -247,12 +251,12 @@ class Shelf (object):
             return item[1]
 
     def iterindex(self):
-        for n, position in self.offset_map.iteritems():
+        for n, position in iteritems(self.offset_map):
             if position < self.offset_map.get_start():
                 name = int8_to_str(n)
                 if name not in self.memory_index:
                     yield name, position
-        for item in self.memory_index.iteritems():
+        for item in list(self.memory_index.items()):
             yield item
 
     def __iter__(self):
@@ -264,6 +268,8 @@ class Shelf (object):
             item = self.get_item_at_position(position)
             assert item[0] == name, (name, item)
             yield item
+
+    items = iteritems
 
     def __contains__(self, name):
         return self.get_position(name) != None
@@ -297,13 +303,14 @@ def read_transaction_offsets(file, repair=False):
         if file.tell() != transaction_end:
             raise ShortRead
         return transaction_offsets
-    except ShortRead, e:
+    except ShortRead:
         position = file.tell()
         if position > transaction_start:
             if repair:
                 file.seek(transaction_start)
                 file.truncate()
             else:
+                e = sys.exc_info()[1]
                 e.args = repr(dict(
                     transaction_start=transaction_start,
                     transaction_end = transaction_end,
@@ -324,11 +331,21 @@ class OffsetMap (object):
     """
     def __init__(self, file, max_oid=-2, max_offset=0):
         self.start = file.tell()
-        assert max_offset < self.start
-        self.int_array = IntArray(
-            file=file,
-            number_of_ints=max_oid + 2,
-            maximum_int=self.start + max_oid + 2)
+        file.seek(0, 2)
+        if file.tell() == self.start:
+            for step in self.__class__.generate(file, max_oid, max_offset):
+                pass
+        file.seek(self.start)
+        self.int_array = IntArray(file=file)
+
+    @staticmethod
+    def generate(file, max_oid=-2, max_offset=0):
+        start = file.tell()
+        assert max_offset < start
+        for step in IntArray.generate(file=file, number_of_ints=max_oid + 2,
+            maximum_int=start + max_oid + 2):
+            yield step
+        file.seek(start)
 
     def get_start(self):
         return self.start
@@ -349,7 +366,7 @@ class OffsetMap (object):
 
     def __setitem__(self, j, value):
         """
-        Note that this is not called after self.stitch().
+        Note that this is not called after self.gen_stitch() is consumed.
         We don't overwrite any non-blank values.
         """
         assert self.get(j) is None
@@ -365,14 +382,17 @@ class OffsetMap (object):
             if number < self.start:
                 yield j, number
 
+    items = iteritems
+
     def get_array_size(self):
         """() -> int
         Note that this is the total capacity of the array.
         """
         return len(self.int_array)
 
-    def stitch(self):
+    def gen_stitch(self):
         """
+        Return a generator that does the following as it is consumed.
         Build the linked list of holes.
         Each value is the index of the next hole plus self.start.
         The offset is added so that we can distinguish ordinary offsets,
@@ -383,6 +403,7 @@ class OffsetMap (object):
             if self.get(index) is None:
                 self.int_array[index] = last_index + self.start
                 last_index = index
+            yield index
 
     def gen_holes(self):
         """Generate the sequence of holes."""
@@ -396,22 +417,3 @@ class OffsetMap (object):
                     break
                 j = new_j
 
-if __name__ == '__main__':
-    import sys
-    def usage():
-        print "Usage: python %s <existing_file> <new_file>" % sys.argv[0]
-        print "  Creates a new Shelf-format file",
-        print "from an existing FileStorage file."
-        raise SystemExit
-    if len(sys.argv) != 3:
-        usage()
-    from os.path import exists
-    if not exists(sys.argv[1]):
-        usage()
-    if exists(sys.argv[2]):
-        usage()
-    from durus.file_storage import FileStorage
-    storage = FileStorage(sys.argv[1])
-    shelf = Shelf(sys.argv[2], items=storage.gen_oid_record())
-    storage.close()
-    shelf.close()

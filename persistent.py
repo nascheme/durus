@@ -2,7 +2,7 @@
 $URL$
 $Id$
 """
-from durus.utils import str_to_int8
+from durus.utils import str_to_int8, iteritems, as_bytes
 from sys import stderr
 
 # these must match the constants in _persistent.c
@@ -15,9 +15,10 @@ try:
     from durus._persistent import PersistentBase, ConnectionBase
     from durus._persistent import _setattribute, _delattribute
     from durus._persistent import _getattribute, _hasattribute
-    [ConnectionBase, _hasattribute] # to silence the unused import checker
+    from durus._persistent import call_if_persistent
+    [ConnectionBase, _hasattribute, call_if_persistent] # silence import checker
 except ImportError:
-    print >>stderr, 'Using Python base classes for persistence.'
+    stderr.write('Using Python base classes for persistence.\n')
 
     _setattribute = object.__setattr__
     _delattribute = object.__delattr__
@@ -39,7 +40,7 @@ except ImportError:
         __slots__ = ['transaction_serial']
 
         def __new__(klass, *args, **kwargs):
-            instance = object.__new__(klass, *args, **kwargs)
+            instance = object.__new__(klass)
             instance.transaction_serial = 1
             return instance
 
@@ -93,7 +94,7 @@ except ImportError:
         __slots__ = ['_p_status', '_p_serial', '_p_connection', '_p_oid']
 
         def __new__(klass, *args, **kwargs):
-            instance = object.__new__(klass, *args, **kwargs)
+            instance = object.__new__(klass)
             instance._p_status = UNSAVED
             instance._p_serial = 0
             instance._p_connection = None
@@ -114,6 +115,12 @@ except ImportError:
             if name[:3] != '_p_' and name not in _GHOST_SAFE_ATTRIBUTES:
                 self._p_note_change()
             _setattribute(self, name, value)
+
+    def call_if_persistent(f, x):
+        if isinstance(x, PersistentBase):
+            return f(x)
+        else:
+            return None
 
 
 class PersistentObject (PersistentBase):
@@ -148,14 +155,8 @@ class PersistentObject (PersistentBase):
         for name in self._p_gen_data_slots():
             _delattribute(self, name)
         if state is not None:
-            for key, value in state.iteritems():
+            for key, value in iteritems(state):
                 _setattribute(self, key, value)
-
-    # This is here for ZODB-compatibility.
-    # Note that setting _p_changed to a non-true value does nothing.
-    _p_changed = property(
-        lambda self: self._p_status == UNSAVED,
-        lambda self, value: value and self._p_note_change())
 
     def __repr__(self):
         if self._p_oid is None:
@@ -180,7 +181,7 @@ class PersistentObject (PersistentBase):
 
     def _p_format_oid(self):
         oid = self._p_oid
-        return str(oid and str_to_int8(oid))
+        return str(oid and str_to_int8(as_bytes(oid)))
 
     def _p_set_status_ghost(self):
         self.__setstate__({})

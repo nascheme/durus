@@ -247,14 +247,33 @@ class BNode (PersistentObject):
                 self.nodes = self.nodes[0].nodes
 
     def get_count(self):
+        """() -> int
+        How many items are stored in this node and descendants?
+        """
         result = len(self.items)
         for node in self.nodes or []:
             result += node.get_count()
         return result
 
-class BNode2 (BNode):
-    __slots__ = []
-    minimum_degree = 2
+    def get_node_count(self):
+        """() -> int
+        How many nodes are here, including descendants?
+        """
+        result = 1
+        for node in self.nodes or []:
+            result += node.get_node_count()
+        return result
+
+    def get_level(self):
+        """() -> int
+        How many levels of nodes are there between this node
+        and descendant leaf nodes?
+        """
+        if self.is_leaf():
+            return 0
+        else:
+            return 1 + self.nodes[0].get_level()
+
 
 class BNode4 (BNode):
     __slots__ = []
@@ -294,6 +313,7 @@ for bnode_class in [BNode] + BNode.__subclasses__():
     bnode_class.nodes_is = (None, [bnode_class])
 del bnode_class
 
+
 class BTree (PersistentObject):
     """
     Instance attributes:
@@ -309,6 +329,8 @@ class BTree (PersistentObject):
 
     def __nonzero__(self):
         return bool(self.root.items)
+
+    __bool__ = __nonzero__
 
     def iteritems(self):
         for item in self.root:
@@ -363,11 +385,13 @@ class BTree (PersistentObject):
             items = args[0]
             if hasattr(items, 'iteritems'):
                 item_sequence = items.iteritems()
+            elif hasattr(items, 'items'):
+                item_sequence = items.items()
             else:
                 item_sequence = items
             for key, value in item_sequence:
                 self[key] = value
-        for key, value in kwargs.iteritems():
+        for key, value in kwargs.items():
             self[key] = value
 
     def __getitem__(self, key):
@@ -479,3 +503,29 @@ class BTree (PersistentObject):
         """
         self[key] = self[key]
 
+    def get_depth(self):
+        """() -> int
+        How many levels of nodes are used for this BTree?
+        """
+        return self.root.get_level() + 1
+
+    def get_node_count(self):
+        """() -> int
+        How many nodes are used for this BTree?
+        """
+        return self.root.get_node_count()
+
+    def set_bnode_minimum_degree(self, degree):
+        """(degree: int) -> boolean
+        Replace all nodes of this tree, if necessary, using a BNode subclass
+        of the given minimum_degree, if there is such a class.
+        Return True if a change was made.
+        """
+        if self.root.minimum_degree is not degree:
+            for bnode_class in BNode.__subclasses__():
+                if bnode_class.minimum_degree == degree:
+                    new_tree = BTree(node_constructor=bnode_class)
+                    new_tree.update(self)
+                    self.root = new_tree.root
+                    return True
+        return False

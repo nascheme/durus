@@ -2,11 +2,10 @@
 $URL$
 $Id$
 """
-from StringIO import StringIO
 from sancho.utest import UTest, raises
 from durus.file import File
 from durus.shelf import Shelf
-from durus.utils import ShortRead, int8_to_str
+from durus.utils import ShortRead, int8_to_str, BytesIO, as_bytes
 
 class ShelfTest (UTest):
 
@@ -23,15 +22,15 @@ class ShelfTest (UTest):
         other = Shelf(f)
         names = sorted(other.__iter__())
         index = sorted(other.iterindex())
-        items = sorted(other.iteritems())
+        items = sorted(other.items())
         assert names == [name1, name2], (name1, name2, names)
         assert items == [(n, n+n) for n in names]
         assert index == [(n, other.get_position(n)) for n in names]
 
     def b(self):
         s = Shelf()
-        assert s.get_value('okokokok') is None
-        assert raises(ValueError, s.get_value, 'okok')
+        assert s.get_value(as_bytes('okokokok')) is None
+        assert raises(ValueError, s.get_value, as_bytes('okok'))
 
     def c(self):
         f = File()
@@ -42,9 +41,9 @@ class ShelfTest (UTest):
         q = Shelf(f)
 
     def d(self):
-        s = StringIO('nope')
+        s = BytesIO(as_bytes('nope'))
         assert raises(AssertionError, Shelf, s)
-        s = StringIO("SHELF-1\nbogus")
+        s = BytesIO(as_bytes("SHELF-1\nbogus"))
         assert raises(ShortRead, Shelf, s)
 
     def e(self):

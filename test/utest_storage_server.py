@@ -4,7 +4,7 @@ $Id$
 """
 from durus.file_storage import TempFileStorage
 from durus.storage_server import StorageServer
-from durus.utils import read
+from durus.utils import read, as_bytes
 from random import choice
 from sancho.utest import UTest
 
@@ -21,7 +21,7 @@ class Test (UTest):
     def check_receive(self):
         class Dribble:
             def recv(x, n):
-                return choice(['a', 'bb'])[:n]
+                return as_bytes(choice(['a', 'bb'])[:n])
         fake_socket = Dribble()
         read(fake_socket, 30)
 

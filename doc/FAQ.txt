@@ -1,76 +1,19 @@
 Frequently Asked Questions about Durus
 ======================================
 
+
 Q:
-    For what sorts of applications is Durus best suited?
+    How do I backup a database?  Do I need to shutdown the storage
+    server first?
 
 A:
-    Durus aggressively caches data and does not do locking.  As a result
-    it performs very well for applications do mostly reading and only a
-    little writing.
-
-
-Q:
-    Why did was Durus developed when ZODB and ZEO already existed?
-
-A:
-    The initial motivation mostly that we wanted to use new-style
-    classes instead of ExtensionClasses.  Durus does not have as many
-    features as ZODB (multi-threaded storage access, multiple storage 
-    backends, asynchronous IO, versions, undo, conflict resolution).  
-    That all adds up to making the code much simpler.
-
-    Recent releases of ZODB now use new-style classes too.  So, if you
-    need those extra features then ZODB is still the way to go.  We like
-    Durus because it does what we need and it is simple enough that we
-    can understand it in its entirety.
-
-    The programming interface is nearly the same as ZODB (Durus is
-    heavily influenced by the ZODB design).  Speed is pretty similar
-    although Durus may be a little faster.
-
-
-Q:
-    Is Durus thread-safe?
-
-A:
-    Durus Connections using ClientStorage should be safe to use in multiple 
-    threads in the same process as long as no individual Connection or 
-    ClientStorage instance or any of the PersistentObject instances obtained 
-    from that Connection are accessed from more than one thread.
-    
-    Our applications use multiple processes when they need multiple threads 
-    of control.
-
-
-Q:
-    Can a Durus application use multiple Durus databases?
-
-A:  
-    Yes, and this may be a good idea if you have data sets that are
-    independent.  The thing you can't do is put a reference to
-    an object from Connection A into an object from Connection B.
-
-
-Q:
-    Does Durus support "undo"?
-
-A:
-    No.  A HistoryConnection does, however, provide a way to examine
-    the state of the database in any transaction since the last pack.
-
-
-Q:
-    How would you handle an application which has frequent concurrent
-    writes to the same object?  Durus is generating lots of write
-    conflicts.
-
-A:
-    If your application does a lot of writing then Durus may not be the
-    appropriate database.  That said, there are some ways to mitigate
-    write conflicts.  Try to avoid designs that require frequent writes
-    to the same objects.  Also, try to keep transactions short (i.e.
-    the time between ``abort()``/``commit()`` and ``commit()``).
+    It is safe to just copy the file.  Data is only appended to the file
+    and the FileStorage class can detect if the last transaction has
+    been truncated.  There is no need to shutdown the storage server
+    first.  Because writes are isolated, a utility such as rsync
+    can be used for efficient backups.  If you are setting up a backup
+    system for Durus database files, consider rsync (version 3.0.2 or higher)
+    with the "--append" and/or "--append-verify" flags.
 
 
 Q:
@@ -80,21 +23,29 @@ Q:
 A:
     You need to call ``commit()`` or ``abort()`` in the second client in
     order to see the new data.  This behavior is necessary to provide
-    data consistency.  Between transaction boundaries clients must see a
-    consistent view of the data.  This necessarily means that they may
-    be seeing out-of-date data.
+    data consistency.  
+
+
+Q:
+    My client has received a ``ConflictError`` or ``ReadConflictError``.
+    What must it do to recover?
+
+A:
+    The client must call ``abort()`` and restart the transaction.  Note
+    that it must not keep partial results in local variables, for example,
+    since the data it was using before the conflict was out of date.
 
 
 Q:
     When does a write conflict occur?
 
 A:
-    If, in the period since the last time client A called ``commit()``/``abort()``,
-    client A has accessed an attribute of a PersistentObject instance X and 
-    some other client has also committed changes to X, then a ``ConflictError``
-    exception will be raised when client A tries to commit any changes.
-    This prevents client A from committing changes that are based on out-of-date
-    data.
+    If, in the period since the last time client A called
+    ``commit()``/``abort()``, client A has accessed an attribute of a
+    PersistentObject instance X and some other client has also committed changes
+    to X, then a ``ConflictError`` exception will be raised when client A tries
+    to commit any changes.  This prevents client A from committing changes that
+    are based on out-of-date data.
 
 
 Q:
@@ -104,30 +55,13 @@ A:
     The exact conditions under which a ``ReadConflictError`` is raised
     are complicated so the source code is probably the best reference.
     In essence, a read conflict occurs when a client tries to load data
-    from the storage server that is inconsistent with data that it has
+    from the storage server that is inconsistent with other data that it has
     accessed since the last ``commit()``/``abort()``.
 
     For example, a client examines object A, a second client modifies object 
     A and object B.  If the first client tries to load object B it will get 
     a read conflict error.  The state of object A, already accessed, is not 
     consistent with the state of B.
-
-    Multi-version concurrency control (MVCC) can avoid read conflicts.
-    When MVCC is used, an older version of the object's state is
-    returned to the client (a version consistent with the other objects
-    that the client loaded).  The Zope Object Database (ZODB) offers
-    MVCC.  Durus does not.
-
-
-Q:
-    My client has received a ``ConflictError`` or ``ReadConflictError``.
-    What must it do to recover?
-
-A:
-    The client must call ``abort()`` and restart the transaction.  Note
-    that it must not keep partial results in local variables, for
-    example, since the data it was using before the conflict was out of
-    date.
 
 
 Q:
@@ -136,7 +70,6 @@ Q:
 
 A:
     We have found that a separate database update script works well.
-    Using ``__getstate__`` and ``__setstate__`` is not recommended.
 
 
 Q:
@@ -162,10 +95,9 @@ A:
         # Put the new class where the old class was.
         old_module.OldClass = new_module.NewClass
         # Open the connection.
-        from durus.file_storage import FileStorage
         from durus.connection import Connection
         from durus.connection import gen_every_instance, touch_every_reference
-        connection = Connection(FileStorage("myfile.durus"))
+        connection = Connection("myfile.durus")
         # Make sure that every instance of the class is marked as changed.
         for obj in gen_every_instance(connection, old_module.OldClass):
             obj._p_note_change()
@@ -194,13 +126,32 @@ A:
 
 
 Q:
-    How do I backup a database?  Do I need to shutdown the storage
-    server first?
+    Is Durus thread-safe?
 
 A:
-    It is safe to just copy the file.  Data is only appended to the file
-    and the FileStorage class can detect if the last transaction has
-    been truncated.  There is no need to shutdown the storage server
-    first.
+    Durus Connections using ClientStorage should be safe to use in multiple 
+    threads in the same process as long as no individual Connection or 
+    ClientStorage instance or any of the PersistentObject instances obtained 
+    from that Connection are accessed from more than one thread.
+    
+    Our applications use multiple processes when they need multiple threads 
+    of control.
+
+
+Q:
+    Can a Durus application use multiple Durus databases?
+
+A:  
+    Yes, and this may be a good idea if you have data sets that are
+    independent.  The thing you can't do is put a reference to
+    an object from Connection A into an object from Connection B.
+
+
+Q:
+    Does Durus support "undo"?
+
+A:
+    No.  If you need this capability, you should handle it directly
+    in your application-level code.
 
     

@@ -2,10 +2,13 @@
 $URL$
 $Id$
 """
-from durus.persistent_list import PersistentList
 from durus.connection import Connection
+from durus.persistent_list import PersistentList
 from durus.storage import MemoryStorage
 from sancho.utest import UTest, raises
+
+def interval(n):
+    return list(range(n))
 
 class PersistentListTest (UTest):
 
@@ -39,13 +42,13 @@ class PersistentListTest (UTest):
         assert p[1] == 3
 
     def contains(self):
-        p = PersistentList(x for x in range(5))
+        p = PersistentList(x for x in interval(5))
         assert 2 in p
         assert -1 not in p
 
     def cmp(self):
-        p = PersistentList(range(10))
-        p2 = PersistentList(range(10))
+        p = PersistentList(interval(10))
+        p2 = PersistentList(interval(10))
         assert p == p2
         assert p == list(p2)
         assert p <= p2
@@ -57,23 +60,23 @@ class PersistentListTest (UTest):
         assert cmp(p, p2) == 1
 
     def delete(self):
-        p = PersistentList(x for x in range(10))
+        p = PersistentList(x for x in interval(10))
         self.root['x'] = p
         self.connection.commit()
         del p[1]
         assert p._p_is_unsaved()
 
     def pop(self):
-        p = PersistentList(x for x in range(10))
+        p = PersistentList(x for x in interval(10))
         p.pop()
         assert 9 not in p
 
     def slice(self):
-        p = PersistentList(x for x in range(10))
+        p = PersistentList(x for x in interval(10))
         p[:] = [2,3]
         assert len(p) == 2
         assert p[-1:] == [3]
-        p[1:] = PersistentList(range(2))
+        p[1:] = PersistentList(interval(2))
         assert p == [2,0,1], p.data
         p[:] = (3,4)
         assert p == [3,4]
@@ -81,28 +84,28 @@ class PersistentListTest (UTest):
         assert p == [4]
 
     def sort(self):
-        p = PersistentList(x for x in range(10))
+        p = PersistentList(x for x in interval(10))
         p.reverse()
-        assert p == list(reversed(range(10)))
-        p.sort()
-        assert p == range(10)
+        assert p == list(reversed(interval(10)))
+        p = sorted(p)
+        assert p == interval(10)
 
     def arith(self):
-        p = PersistentList(range(3))
-        p2 = PersistentList(range(3))
-        assert p + p2 == range(3) + range(3)
-        assert range(3) + p2 == range(3) + range(3)
-        assert tuple(range(3)) + p2 == range(3) + range(3)
-        assert p + range(3) == range(3) + range(3)
-        assert p + tuple(range(3)) == range(3) + range(3)
-        assert p * 2 == range(3) + range(3)
+        p = PersistentList(interval(3))
+        p2 = PersistentList(interval(3))
+        assert p + p2 == interval(3) + interval(3)
+        assert interval(3) + p2 == interval(3) + interval(3)
+        assert tuple(interval(3)) + p2 == interval(3) + interval(3)
+        assert p + interval(3) == interval(3) + interval(3)
+        assert p + tuple(interval(3)) == interval(3) + interval(3)
+        assert p * 2 == interval(3) + interval(3)
         p += p2
-        assert p == range(3) + range(3)
-        p2 += range(3)
-        assert p == range(3) + range(3)
-        p = PersistentList(range(3))
+        assert p == interval(3) + interval(3)
+        p2 += interval(3)
+        assert p == interval(3) + interval(3)
+        p = PersistentList(interval(3))
         p *= 2
-        assert p == range(3) + range(3)
+        assert p == interval(3) + interval(3)
 
     def other(self):
         p = PersistentList()
@@ -112,8 +115,8 @@ class PersistentListTest (UTest):
         assert p.count(2) == 1
         assert p.index(2) == 0
         p.remove(2)
-        p.extend(PersistentList(range(3)))
-        assert p == range(3)
+        p.extend(PersistentList(interval(3)))
+        assert p == interval(3)
 
 
 if __name__ == '__main__':

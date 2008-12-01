@@ -2,15 +2,17 @@
 $URL$
 $Id$
 """
-from cPickle import dumps, loads
+from datetime import datetime
 from durus.file import File
+from durus.logger import log, is_logging
 from durus.serialize import unpack_record, split_oids
 from durus.shelf import Shelf
 from durus.storage import Storage
 from durus.utils import int8_to_str, str_to_int8, IntSet
 from durus.utils import read, write, read_int8_str, write_int8_str
-from durus.utils import read_int8, write_int8, ShortRead
+from durus.utils import read_int8, write_int8, ShortRead, iteritems
 from durus.utils import write_int4, read_int4_str, write_int4_str
+from durus.utils import dumps, loads, as_bytes, byte_string
 from zlib import compress, decompress
 import durus.connection
 
@@ -24,8 +26,8 @@ class FileStorage (Storage):
         # We will choose the concrete class from the available implementations,
         # and by examining the prefix string in the file itself.
         # The first class in the "implementations" list is the default.
-        implementations = [FileStorage2, ShelfStorage]
-        file = File(filename)
+        implementations = [ShelfStorage, FileStorage2]
+        file = File(filename, readonly=readonly)
         storage_class = implementations[0]
         for implementation in implementations:
             if implementation.has_format(file):
@@ -52,9 +54,10 @@ class ShelfStorage (FileStorage):
     The offset index of a shelf is stored in a format that makes it usable
     directly from the disk.  This offers some advantage in startup time
     and memory usage.
-    
-    This FileStorage implementation is experimental in Durus 3.7.
-    
+
+    This FileStorage implementation is experimental in Durus 3.7,
+    and standard in Durus 3.8.
+
     Instance attributes:
       shelf : Shelf
         Contains the stored records.  This wraps a file.
@@ -109,7 +112,12 @@ class ShelfStorage (FileStorage):
             raise ValueError("oid %r is a surprise" % oid)
 
     def end(self, handle_invalidations=None):
-        self.shelf.store(self.pending_records.iteritems())
+        self.shelf.store(iteritems(self.pending_records))
+        if is_logging(20):
+            shelf_file = self.shelf.get_file()
+            shelf_file.seek_end()
+            pos = shelf_file.tell()
+            log(20, "Transaction at [%s] end=%s" % (datetime.now(), pos))
         if self.pack_extra is not None:
             self.pack_extra.update(self.pending_records)
         self.allocated_unused_oids -= set(self.pending_records)
@@ -124,7 +132,7 @@ class ShelfStorage (FileStorage):
 
     def gen_oid_record(self, start_oid=None, **other):
         if start_oid is None:
-            for item in self.shelf.iteritems():
+            for item in iteritems(self.shelf):
                 yield item
         else:
             todo = [start_oid]
@@ -158,20 +166,42 @@ class ShelfStorage (FileStorage):
         file.truncate() # obtains lock and clears.
         assert file.tell() == 0
         def packer():
+            yield "started %s" % datetime.now()
             items = self.gen_oid_record(start_oid=int8_to_str(0))
             for step in Shelf.generate_shelf(file, items):
                 yield step
+            file.flush()
+            file.fsync()
             shelf = Shelf(file)
-            shelf.store(
-                (name, self.shelf.get_value(name)) for name in self.pack_extra)
-            if not self.shelf.get_file().is_temporary():
-                self.shelf.get_file().rename(file_path + '.prepack')
-            shelf.get_file().rename(file_path)
-            for oid in self.shelf:
+            yield "base written %s" % datetime.now()
+            for j, oid in enumerate(self.shelf):
+                yield j
                 if shelf.get_position(oid) is None:
                     self.invalid.add(oid)
+            yield "invalidations identified %s" % datetime.now()
+            n = len(self.pack_extra)
+            while self.pack_extra:
+                n -= 1
+                first = []
+                while len(self.pack_extra) > n:
+                    first.append(self.pack_extra.pop())
+                shelf.store(
+                    (name, self.shelf.get_value(name)) for name in first)
+                file.flush()
+                file.fsync()
+                yield len(self.pack_extra)
+            yield "extra written %s" % datetime.now()
+            # Now we are caught up.  Close the deal.
+            file.flush()
+            file.fsync()
+            yield "file completed %s" % datetime.now()
+            if not self.shelf.get_file().is_temporary():
+                self.shelf.get_file().rename(file_path + '.prepack')
+                self.shelf.get_file().close()
+            shelf.get_file().rename(file_path)
             self.shelf = shelf
             self.pack_extra = None
+            yield "finished %s" % datetime.now()
         return packer()
 
 
@@ -185,8 +215,9 @@ class ShelfStorage (FileStorage):
 
 class FileStorage2 (FileStorage):
     """
-    This is the standard FileStorage implementation in Durus 3.7.
-    
+    This is the standard FileStorage implementation in Durus 3.7,
+    and deprecated in Durus 3.8.
+
     Instance attributes:
       fp : file
       index : { oid:string : offset:int }
@@ -236,7 +267,7 @@ class FileStorage2 (FileStorage):
           object state, but they are included directly here for faster access.
     """
 
-    MAGIC = "DFS20\0"
+    MAGIC = as_bytes("DFS20\0")
 
     _PACK_INCREMENT = 20 # number of records to pack before yielding
 
@@ -282,9 +313,6 @@ class FileStorage2 (FileStorage):
         write(fp, self.MAGIC)
         write_int8(fp, 0) # index offset
 
-    def get_size(self):
-        return len(self.index)
-
     def new_oid(self):
         self.oid += 1
         return int8_to_str(self.oid)
@@ -302,7 +330,7 @@ class FileStorage2 (FileStorage):
         self.pending_records[oid] = record
 
     def _generate_pending_records(self):
-        for oid, record in self.pending_records.iteritems():
+        for oid, record in iteritems(self.pending_records):
             yield oid, record
 
     def end(self, handle_invalidations=None):
@@ -348,7 +376,7 @@ class FileStorage2 (FileStorage):
 
     def gen_oid_record(self, start_oid=None, batch_size=100):
         if start_oid is None:
-            for oid, offset in self.index.iteritems():
+            for oid, offset in iteritems(self.index):
                 yield oid, self.load(oid)
         else:
             for item in Storage.gen_oid_record(
@@ -417,11 +445,20 @@ class FileStorage2 (FileStorage):
     def _build_index(self, repair):
         self.fp.seek(0)
         if read(self.fp, len(self.MAGIC)) != self.MAGIC:
-            raise IOError, "invalid storage (missing magic in %r)" % self.fp
+            raise IOError("invalid storage (missing magic in %r)" % self.fp)
         index_offset = read_int8(self.fp)
         assert index_offset > 0
         self.fp.seek(index_offset)
-        self.index = loads(decompress(read_int8_str(self.fp)))
+        tmp_index = loads(decompress(read_int8_str(self.fp)))
+        self.index = {}
+        def oid_as_bytes(oid):
+            if isinstance(oid, byte_string):
+                return oid
+            else:
+                return oid.encode('latin1')
+        for tmp_oid in tmp_index:
+            self.index[oid_as_bytes(tmp_oid)] = tmp_index[tmp_oid]
+        del tmp_index
         while 1:
             # Read one transaction each time here.
             oids = {}
@@ -439,7 +476,7 @@ class FileStorage2 (FileStorage):
                 # We've reached the normal end of a transaction.
                 self.index.update(oids)
                 oids.clear()
-            except (ValueError, IOError), exc:
+            except (ValueError, IOError):
                 if self.fp.tell() > transaction_offset:
                     if not repair:
                         raise

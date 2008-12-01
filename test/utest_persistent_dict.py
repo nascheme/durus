@@ -2,8 +2,8 @@
 $URL$
 $Id$
 """
-from durus.persistent_dict import PersistentDict
 from durus.connection import Connection
+from durus.persistent_dict import PersistentDict
 from durus.storage import MemoryStorage
 from sancho.utest import UTest, raises
 
@@ -64,18 +64,18 @@ class PersistentDictTest (UTest):
         assert pd.has_key(2)
         pd.clear()
         assert not pd.has_key(2)
-        assert pd.keys() == []
+        assert list(pd.keys()) == []
 
     def update(self):
         pd = PersistentDict()
         pd.update()
         raises(TypeError, pd.update, {}, {})
-        assert not pd.items()
+        assert not list(pd.items())
         pd.update(a=1)
-        assert pd.items() == [('a', 1)]
+        assert list(pd.items()) == [('a', 1)]
         pd = PersistentDict()
         pd.update(dict(b=2), a=1)
-        assert len(pd.items()) == 2
+        assert len(list(pd.items())) == 2
         assert pd['b'] == 2
         assert pd['a'] == 1
         pd = PersistentDict()
@@ -97,7 +97,7 @@ class PersistentDictTest (UTest):
         pd = PersistentDict((x, True) for x in range(10))
         pd2 = PersistentDict((x, True) for x in range(10))
         assert pd == pd2
-        assert pd == dict(pd2)
+        assert dict(pd) == dict(pd2)
 
     def delete(self):
         connection = Connection(MemoryStorage())
@@ -117,8 +117,8 @@ class PersistentDictTest (UTest):
 
     def iter(self):
         pd = PersistentDict((x, True) for x in range(10))
-        assert list(pd.iteritems()) == zip(pd.iterkeys(), pd.itervalues())
-        assert list(pd.items()) == zip(pd.keys(), pd.values())
+        assert list(pd.iteritems()) == list(zip(pd.iterkeys(), pd.itervalues()))
+        assert list(pd.items()) == list(zip(pd.keys(), pd.values()))
 
     def pops(self):
         pd = PersistentDict((x, True) for x in range(10))
@@ -129,7 +129,7 @@ class PersistentDictTest (UTest):
     def fromkeys(self):
         x = PersistentDict.fromkeys(dict(a=2), value=4)
         assert isinstance(x, PersistentDict)
-        assert x == dict(a=4)
+        assert dict(x) == dict(a=4)
 
 
 if __name__ == '__main__':

@@ -1,3 +1,81 @@
+3.8: (2008-12-03)
+
+Revise all code so that it is functional in both python 2 and python 3.
+Note that this has not been tested much in python 3.  Storage files created
+using python 2 must be converted to work with python 3.  A db_to_py3k.py
+script is included for this purpose.
+
+This release requires Python version 2.4 or later.
+
+Implement call_if_persistent and use it to guard calls to persistent_id()
+during pickling.  In one benchmark, this reduces commit() time by 50%.
+
+Make ShelfStorage the default FileStorage implementation.
+The FileStorage2 implementation is supported in this release,
+but deprecated.  
+To convert formats, use "db_to_shelf.py old.durus new.durus".
+
+Add support for automatic garbage collection.
+Add an "gcbytes" keyword argument to StorageServer.  When the gcbytes
+value is a positive number, it gives the number of bytes to commit
+between garbage collections of the Storage.  The garbage collections
+are done automatically and incrementally when the StorageServer is not handling 
+other client requests.
+
+Add BTree.get_depth() and  BTree.get_node_count() so that it is possible 
+to know something of the dimensions of a given BTree.
+
+Add BTree.set_bnode_minimum_degree() so that you control the depth of a BTree.
+
+Add Cache.__iter__(), so that it is easier to examine the objects currently
+in the cache.
+
+Implement __eq__() and __ne__() for PersistentDict, but remove __cmp__().
+Drop support for comparing a PersistentDict to a plain dict.
+
+Instead of using a set for recent_objects, use a special 
+ReferenceContainer class.  This removes the necessity for
+persistent instances to be hashable.
+
+Remove the time-travel Connection from Durus.
+
+Add BitArray.items()
+Add Byte.byte()
+Remove ByteArray.__str__().
+
+Add byte_string to utils.
+Add join_bytes(), empty_byte_string, and as_bytes() to utils.
+Make write() call as_bytes() on the argument so that write(f, 'foo')
+works in python 2 and python 3.
+Add write_all() to utils so that callers don't need to concatenate
+their arguments.
+
+Add a flush() after every write() on Windows.
+This appears to fix a problem that shows up when using ShelfStorage.
+The problem was detected and fixed by Matthew Scott.  Thanks.
+Also change the nt implemention of obtain lock so that failure
+to obtain a lock raises an IOError, as on other systems, instead
+of a pywintypes.error.
+
+Patch imports to work on nt.  Posted by Sergio Alvarez.
+
+Fix bug in FileStorage constructor that would prevent a file from
+being opened as readonly when another process has it open readwrite.
+
+Add Shelf.items().
+
+Remove Storage.get_size(), FileStorage2.get_size().
+
+Remove support for calling _p_note_change() by assigning to
+the "_p_changed" attribute.  If your code uses the attribute-setting
+style, it should be updated to just call the method directly.
+The attribute-setting notation is riskier because you may set the wrong
+attribute, or set the right attribute on a non-persistent object, 
+and get unexpected results.
+
+Remove the "pack_storage.py" script.  If you have cron jobs that were 
+using this, you should change them to use "durus -p" instead.
+
 3.7: (2007-05-02)
 
      * Fix a bug in BTree insert_item().  The bug was discovered by 

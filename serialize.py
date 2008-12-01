@@ -2,12 +2,13 @@
 $URL$
 $Id$
 """
-import struct
-from cPickle import Pickler, Unpickler, loads
-from cStringIO import StringIO
-from durus.persistent import PersistentObject
-from durus.utils import int4_to_str, str_to_int4
+from durus.persistent import call_if_persistent
+from durus.utils import int4_to_str, str_to_int4, join_bytes, BytesIO
+from durus.utils import Pickler, Unpickler, loads, dumps, as_bytes
+from types import MethodType
 from zlib import compress, decompress, error as zlib_error
+import struct
+import sys
 
 WRITE_COMPRESSED_STATE_PICKLES = True
 PICKLE_PROTOCOL = 2
@@ -15,7 +16,7 @@ PICKLE_PROTOCOL = 2
 def pack_record(oid, data, refs):
     """(oid:str, data:str, refs:str) -> record:str
     """
-    return ''.join([oid, int4_to_str(len(data)), data, refs])
+    return join_bytes([oid, int4_to_str(len(data)), data, refs])
 
 def unpack_record(record):
     """(record:str) -> oid:str, data:str, refs:str
@@ -39,12 +40,23 @@ def split_oids(s):
     fmt = '8s' * num
     return list(struct.unpack('>' + fmt, s))
 
+NEWLINE = as_bytes('\n')
+
 def extract_class_name(record):
     try:
         oid, state, refs = unpack_record(record)
-        return state.split('\n', 2)[1]
+        return state.split(NEWLINE, 2)[1]
     except IndexError:
         return "?"
+
+if sys.version < "3":
+    def method(a, b):
+        return MethodType(a, b, object)
+else:
+    def method(a, b):
+        return MethodType(a, b)
+
+
 
 class ObjectWriter (object):
     """
@@ -56,9 +68,10 @@ class ObjectWriter (object):
     """
 
     def __init__(self, connection):
-        self.sio = StringIO()
+        self.sio = BytesIO()
         self.pickler = Pickler(self.sio, PICKLE_PROTOCOL)
-        self.pickler.persistent_id = self._persistent_id
+        self.pickler.persistent_id = method(
+            call_if_persistent, self._persistent_id)
         self.objects_found = []
         self.refs = set() # populated by _persistent_id()
         self.connection = connection
@@ -66,17 +79,13 @@ class ObjectWriter (object):
     def close(self):
         # see ObjectWriter.__doc__
         # Explicitly break cycle involving pickler
-        self.pickler.persistent_id = None
+        self.pickler.persistent_id = int
         self.pickler = None
 
     def _persistent_id(self, obj):
+        """(PersistentBase) -> (oid:str, klass:type)
+        This is called on PersistentBase instances during pickling.
         """
-        This function is used by the pickler to test whether an object
-        is persistent. If the obj is persistent, it returns the oid and type,
-        otherwise it returns None.
-        """
-        if not isinstance(obj, PersistentObject):
-            return None
         if obj._p_oid is None:
             obj._p_oid = self.connection.new_oid()
             obj._p_connection = self.connection
@@ -96,7 +105,7 @@ class ObjectWriter (object):
             yield obj
 
     def get_state(self, obj):
-        self.sio.seek(0) # recycle StringIO instance
+        self.sio.seek(0) # recycle BytesIO instance
         self.sio.truncate()
         self.pickler.clear_memo()
         self.pickler.dump(type(obj))
@@ -112,7 +121,11 @@ class ObjectWriter (object):
             state = pickled_state
         data = pickled_type + state
         self.refs.discard(obj._p_oid)
-        return data, ''.join(self.refs)
+        return data, join_bytes(self.refs)
+
+
+
+COMPRESSED_START_BYTE = compress(dumps({}, 2))[0]
 
 class ObjectReader (object):
 
@@ -138,13 +151,13 @@ class ObjectReader (object):
 
     def get_state(self, data, load=True):
         self.load_count += 1
-        s = StringIO()
+        s = BytesIO()
         s.write(data)
         s.seek(0)
         unpickler = self._get_unpickler(s)
         klass = unpickler.load()
         position = s.tell()
-        if data[s.tell()] == 'x':
+        if data[s.tell()] == COMPRESSED_START_BYTE:
             # This is almost certainly a compressed pickle.
             try:
                 decompressed = decompress(data[position:])

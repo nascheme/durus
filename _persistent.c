@@ -5,7 +5,16 @@ $Id$
 
 #include "Python.h"
 #include "structmember.h"
-#include "weakrefobject.h"
+
+#if PY_VERSION_HEX < 0x03000000
+	#define Integer_FromLong PyInt_FromLong
+	#define AttributeName_Check PyString_Check
+	#define AttributeName_AsString PyString_AS_STRING
+#else
+	#define Integer_FromLong PyLong_FromLong
+	#define AttributeName_Check PyUnicode_Check
+	#define AttributeName_AsString _PyUnicode_AsString
+#endif
 
 /* these constants must match the ones in persistent.py */
 enum status { SAVED=0, UNSAVED=1, GHOST=-1 };
@@ -32,7 +41,7 @@ pb_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 	if (x == NULL)
 		return NULL;
 	x->p_status = UNSAVED;
-	x->p_serial = PyInt_FromLong(0L);
+	x->p_serial = Integer_FromLong(0L);
 	if (x->p_serial == NULL)
 		return NULL;
 	x->p_connection = Py_None;
@@ -74,8 +83,8 @@ pb_clear(PersistentBaseObject *self)
 
 
 /* Returns true if accessing 'name' requires that the object be loaded.
- * Don't trigger a load for any attribute starting with _p_.	The names
- * __repr__ and __class__ are also exempt. */
+ * Don't trigger a load for any attribute starting with "_p_".	The names
+ * "__repr__", "__class__", and "__setstate__" are also exempt. */
 
 static int
 load_triggering_name(char *s)
@@ -147,12 +156,13 @@ static PyObject *
 pb_getattro(PersistentBaseObject *self, PyObject *name)
 {
 	char *sname;
-	if (!PyString_Check(name)) {
-		PyErr_SetString(PyExc_TypeError,
-				"attribute name must be a string");
+    sname = NULL;
+	if (AttributeName_Check(name)) {
+	    sname = AttributeName_AsString(name);
+	} else {
+		PyErr_SetString(PyExc_TypeError, "attribute name must be a string");
 		return NULL;
-	}
-	sname = PyString_AS_STRING(name);
+    }
 	if (load_triggering_name(sname)) {
 		if (!pb_load(self))
 			return NULL;
@@ -166,12 +176,13 @@ static int
 pb_setattro(PersistentBaseObject *self, PyObject *name, PyObject *value)
 {
 	char *sname;
-	if (!PyString_Check(name)) {
-		PyErr_SetString(PyExc_TypeError, 
-			"attribute name must be a string");
-		return -1;
+    sname = NULL;
+	if (AttributeName_Check(name)) {
+	    sname = AttributeName_AsString(name);
+	} else {
+		PyErr_SetString(PyExc_TypeError, "attribute name must be a string");
+        return -1;
 	}
-	sname = PyString_AS_STRING(name);
 	if (load_triggering_name(sname)) {
 		if (self->p_status != UNSAVED) {
 			if (!call_method((PyObject *)self, "_p_note_change", NULL))
@@ -199,8 +210,12 @@ This is the C implementation of PersistentBase.\n\
 ";
 
 static PyTypeObject PersistentBase_Type = {
-	PyObject_HEAD_INIT(0)
-	0,					/* ob_size */
+#if PY_VERSION_HEX < 0x03000000
+ 	PyObject_HEAD_INIT(0)
+ 	0,					/* ob_size */
+#else
+    PyVarObject_HEAD_INIT(0, 0)
+#endif
 	"durus.persistent.PersistentBase",	/* tp_name */
 	sizeof(PersistentBaseObject), /* tp_basicsize */
 	0,					/* tp_itemsize */
@@ -247,7 +262,7 @@ cb_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 	x = (ConnectionBaseObject *)PyType_GenericNew(type, args, kwds);
 	if (x == NULL)
 		return NULL;
-	x->transaction_serial = PyInt_FromLong(1L);
+	x->transaction_serial = Integer_FromLong(1L);
 	if (x->transaction_serial == NULL)
 		return NULL;
 	return (PyObject *)x;
@@ -289,8 +304,12 @@ This is the C implementation of ConnectionBase.\n\
 ";	
 
 static PyTypeObject ConnectionBase_Type = {
-	PyObject_HEAD_INIT(0)
-	0,					/* ob_size */
+#if PY_VERSION_HEX < 0x03000000
+ 	PyObject_HEAD_INIT(0)
+ 	0,					/* ob_size */
+#else
+    PyVarObject_HEAD_INIT(0, 0)
+#endif
 	"durus.persistent.ConnectionBase",	/* tp_name */
 	sizeof(ConnectionBaseObject), /* tp_basicsize */
 	0,					/* tp_itemsize */
@@ -380,6 +399,22 @@ hasattribute(PyObject *self, PyObject *args)
 	return result;
 }
 
+PyObject *
+call_if_persistent(PyObject *x, PyObject *args)
+{
+	PyObject *f;     
+	PyObject *arg; 
+	if (!PyArg_UnpackTuple(args, "", 2, 2, &f, &arg)) {
+		return NULL;
+	}
+	if (PyObject_IsInstance(arg, (PyObject *)&PersistentBase_Type)) {
+		return PyObject_CallFunction(f, "O", arg);
+ 	} else {
+		Py_INCREF(Py_None);
+		return Py_None;
+	}
+}
+
 static char setattribute_doc[] = "\
 This function acts like object.__setattr__(), except that it\n\
 does not cause a persistent instance's state to be loaded and it\n\
@@ -399,39 +434,81 @@ a persistent instance's state to be loaded.";
 static char getattribute_doc[] = "\
 This function acts like object.__getattribute__().";
 
+static char call_if_persistent_doc[] = "\
+If the argument is a PersistentBase, call f on it.\n\
+Otherwise, return None.";
+
 static PyMethodDef persistent_module_methods[] = {
 	{"_setattribute", setattribute, METH_VARARGS, setattribute_doc},
 	{"_delattribute", delattribute, METH_VARARGS, delattribute_doc},
 	{"_hasattribute", hasattribute, METH_VARARGS, hasattribute_doc},
 	{"_getattribute", getattribute, METH_VARARGS, getattribute_doc},
+	{"call_if_persistent", call_if_persistent, 
+		METH_VARARGS, call_if_persistent_doc},
 	{NULL, NULL, 0, NULL} /* sentinel */
 };
 
-void
-init_persistent(void)
+#if PY_VERSION_HEX >= 0x03000000
+    static struct PyModuleDef persistent_module = {
+        PyModuleDef_HEAD_INIT,
+        "_persistent",
+        "",
+        -1,
+        persistent_module_methods,
+        NULL,
+        NULL,
+        NULL,
+        NULL
+    };
+#endif
+
+PyObject *
+init_persistent_module(void)
 {
 	PyObject *m, *d;
+#if PY_VERSION_HEX >= 0x03000000
+    m = PyModule_Create(&persistent_module);
+#else
 	m = Py_InitModule4("_persistent", persistent_module_methods, "",
 		NULL, PYTHON_API_VERSION);
+#endif
 	if (m == NULL)
-		return;
+		return NULL;
 	d = PyModule_GetDict(m);
 	if (d == NULL)
-		return;
-
+		return NULL;
+#if PY_VERSION_HEX < 0x03000000
 	PersistentBase_Type.ob_type = &PyType_Type;
+#endif
 	if (PyType_Ready(&PersistentBase_Type) < 0)
-		return;
+		return NULL;
 	Py_INCREF(&PersistentBase_Type);
 	if (PyDict_SetItemString(d, "PersistentBase",
 		(PyObject *)&PersistentBase_Type) < 0)
-		return;
-
+		return NULL;
+#if PY_VERSION_HEX < 0x03000000
 	ConnectionBase_Type.ob_type = &PyType_Type;
+#endif
 	if (PyType_Ready(&ConnectionBase_Type) < 0)
-		return;
+		return NULL;
 	Py_INCREF(&ConnectionBase_Type);
 	if (PyDict_SetItemString(d, "ConnectionBase",
 		(PyObject *)&ConnectionBase_Type) < 0)
-		return;
+		return NULL;
+	return m;
 }
+
+
+#if PY_VERSION_HEX < 0x03000000
+	PyMODINIT_FUNC
+	init_persistent(void)
+	{
+		init_persistent_module();
+	}
+#else
+	PyMODINIT_FUNC
+	PyInit__persistent(void)
+	{
+		return init_persistent_module();
+	}
+#endif

@@ -8,13 +8,18 @@ import os
 import sys
 import time
 import random
-import md5
 from optparse import OptionParser
 from durus.persistent import Persistent
 from durus.storage_server import DEFAULT_PORT, DEFAULT_HOST
 from durus.client_storage import ClientStorage
 from durus.connection import Connection
 from durus.error import ConflictError
+
+if sys.version < "2.6":
+    from md5 import md5
+    md5_new = md5.new
+else:
+    from hashlib import md5 as md5_new
 
 MAX_OBJECTS = 10000
 MAX_DEPTH = 20
@@ -34,8 +39,6 @@ class Counter:
     def inc(self):
         self.value += 1
 
-    def __cmp__(self, other):
-        return cmp(self.value, other)
 
 class Container(Persistent):
     def __init__(self, sum=0, value=None, children=None):
@@ -51,7 +54,7 @@ class Container(Persistent):
         self.generate_data()
 
     def get_checksum(self):
-        return md5.new(self.data).digest()
+        return md5_new(self.data).digest()
 
     def generate_data(self):
         self.data = os.urandom(random.randint(0, MAX_OBJECT_SIZE))
@@ -59,7 +62,7 @@ class Container(Persistent):
 
     def create_children(self, counter, depth=1):
         for i in range(random.randint(1, 20)):
-            if counter > MAX_OBJECTS:
+            if counter.value > MAX_OBJECTS:
                 break
             child = Container(self.sum + self.value)
             counter.inc()
@@ -81,20 +84,20 @@ class Container(Persistent):
 from durus.test.stress import Container
 
 def init_db(connection):
-    print 'creating object graph'
+    sys.stdout.write('creating object graph\n')
     root = connection.get_root()
     obj = Container()
     root['obj'] = obj
     obj.create_children(Counter())
 
 def verify_db(connection, all=False):
-    print 'verifying'
+    sys.stdout.write('verifying\n')
     root = connection.get_root()
     root['obj'].verify(all=all)
 
 def mutate_db(connection):
     n = random.choice([2**i for i in range(8)])
-    print 'mutating', n, 'objects'
+    sys.stdout.write('mutating %s objects\n' % n)
     for i in range(n):
         depth = random.randint(1, MAX_DEPTH)
         parent = connection.get_root()['obj']
@@ -147,7 +150,7 @@ def main():
             n -= 1
         try:
             if hasattr(sys, 'gettotalrefcount'):
-                print 'refs =', sys.gettotalrefcount()
+                sys.stdout.write('refs = %s\n' % sys.gettotalrefcount())
             if randbool():
                 connection.abort()
             verify_db(connection)
@@ -155,7 +158,7 @@ def main():
             connection.commit()
             maybe_sleep()
         except ConflictError:
-            print 'conflict'
+            sys.stdout.write('conflict\n')
             connection.abort()
             maybe_sleep()
 

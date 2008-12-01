@@ -2,7 +2,7 @@
 $URL$
 $Id$
 """
-from durus import run_durus
+from durus import __main__
 from durus.client_storage import ClientStorage
 from durus.connection import Connection, touch_every_reference
 from durus.connection import ObjectDictionary
@@ -12,11 +12,11 @@ from durus.persistent import ConnectionBase
 from durus.storage import get_reference_index, get_census, MemoryStorage
 from durus.storage import gen_referring_oid_record, Storage
 from durus.storage_server import wait_for_server
-from durus.utils import int8_to_str
-from os import unlink
+from durus.utils import int8_to_str, as_bytes, next
+from os import unlink, devnull
 from os.path import exists
-from popen2 import Popen4
 from sancho.utest import UTest, raises
+from subprocess import Popen
 from tempfile import mktemp
 import sys
 
@@ -40,12 +40,12 @@ class TestConnection (UTest):
         assert root._p_is_unsaved() == True
         assert root['a']._p_is_unsaved() == True
         root['a'].f=2
-        assert conn.changed.values() == [root]
+        assert list(conn.changed.values()) == [root]
         conn.commit()
         assert root._p_is_saved()
-        assert conn.changed.values() == []
+        assert list(conn.changed.values()) == []
         root['a'] = Persistent()
-        assert conn.changed.values() == [root]
+        assert list(conn.changed.values()) == [root]
         root['b'] = Persistent()
         root['a'].a = 'a'
         root['b'].b = 'b'
@@ -89,7 +89,7 @@ class TestConnection (UTest):
         assert index == {
             int8_to_str(1): [int8_to_str(0)], int8_to_str(2): [int8_to_str(0)]}
         census = get_census(connection.get_storage())
-        assert census == {'PersistentDict':1, 'Persistent':2}
+        assert census == {as_bytes('PersistentDict'):1, as_bytes('Persistent'):2}
         references = list(gen_referring_oid_record(connection.get_storage(),
                                                    int8_to_str(1)))
         assert references == [
@@ -105,7 +105,7 @@ class TestConnection (UTest):
         raises(NotImplementedError, s.end)
         raises(NotImplementedError, s.sync)
         g = s.gen_oid_record()
-        raises(NotImplementedError, g.next)
+        raises(NotImplementedError, next, g)
 
     def check_touch_every_reference(self):
         connection = Connection(self._get_storage())
@@ -119,6 +119,7 @@ class TestConnection (UTest):
         assert root['b']._p_is_unsaved()
         assert root['b'].c._p_is_unsaved()
         assert not root._p_is_unsaved()
+        assert len(list(connection.get_cache())) == 4
 
     def check_alternative_root(self):
         connection = Connection(self._get_storage(), root_class=Persistent)
@@ -128,18 +129,23 @@ class TestConnection (UTest):
 
 class TestConnectionClientStorage (TestConnection):
 
+    address = ("localhost", 9123)
+
     def _get_storage(self):
         return ClientStorage(port=self.port)
 
     def _pre(self):
         self.port = 9123
         self.filename = mktemp()
-        self.server = Popen4('python %s --port=%s --file=%s' % (
-            run_durus.__file__, self.port, self.filename))
-        wait_for_server(address=("", 9123), sleeptime=1)
+        cmd = [sys.executable, __main__.__file__,
+            '-s', '--file=%s' % self.filename]
+        cmd.append("--port=%s" % self.address[1])
+        output = open(devnull, 'w')
+        x = Popen(cmd, stdout=output, stderr=output)
+        wait_for_server(address=self.address, sleeptime=1)
 
     def _post(self):
-        run_durus.stop_durus(("", self.port))
+        __main__.stop_durus(("localhost", self.port))
         if exists(self.filename):
             unlink(self.filename)
         pack_name = self.filename + '.pack'
@@ -153,10 +159,6 @@ class TestConnectionClientStorage (TestConnection):
         rootb['b'] = Persistent()
         rootc = c.get(int8_to_str(0))
         rootc['c'] = Persistent()
-        print rootb
-        print rootb['b']
-        print rootc
-        print rootc['c']
         c.commit()
         raises(ConflictError, b.commit)
         raises(KeyError, rootb.__getitem__, 'c')
@@ -211,9 +213,7 @@ class TestConnectionClientStorage (TestConnection):
         A = c1.get_root()['A']
         A.a # access A in c1.  This will lead to conflict.
         A_oid = A._p_oid
-        assert A in c1.cache.recent_objects
         A = None # forget about it
-        print
         # Lose the reference to A.
         c1.get_root()._p_set_status_ghost()
         # Commit a new A in c2.

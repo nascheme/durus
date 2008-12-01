@@ -7,6 +7,7 @@ from durus.connection import Connection
 from durus.storage import MemoryStorage
 from random import randint
 from sancho.utest import UTest, raises
+import sys
 
 class CoverageTest(UTest):
 
@@ -24,29 +25,33 @@ class CoverageTest(UTest):
         bt = BTree()
         try:
             del bt[1]
-        except KeyError, e:
-            assert str(e) == '1'
+        except KeyError:
+            assert str(sys.exc_info()[1]) == '1'
 
     def delete_case_2a(self):
         bt = BTree(BNode)
-        map(bt.add, 'jklmoab')
+        for j in 'jklmoab':
+            bt.add(j)
         del bt['k']
 
     def delete_case_2b(self):
         bt = BTree(BNode)
-        map(bt.add, 'abcdef')
+        for j in 'abcdef':
+            bt.add(j)
         assert bt.root.items == [('b', True), ('d', True)]
         del bt['d']
 
     def delete_case_2c(self):
         bt = BTree(BNode)
-        map(bt.add, 'abcdefghi')
+        for j in 'abcdefghi':
+            bt.add(j)
         assert bt.root.items == [('d', True)]
         del bt['d']
 
     def _delete_case_3(self):
         bt = BTree(BNode)
-        map(bt.add, range(100))
+        for j in range(100):
+            bt.add(j)
         assert bt.root.items == [(31, True), (63, True)]
         assert [n.items for n in bt.root.nodes] == [
             [(15, True)], [(47, True)], [(79, True)]]
@@ -96,32 +101,37 @@ class CoverageTest(UTest):
         bt = BTree()
         raises(AssertionError, bt.get_min_item)
         raises(AssertionError, bt.get_max_item)
-        map(bt.add, range(100))
+        for j in range(100):
+            bt.add(j)
         assert bt.get_min_item() == (0, True)
         assert bt.get_max_item() == (99, True)
 
     def iter(self):
         bt = BTree()
-        map(bt.add, range(100))
+        for j in range(100):
+            bt.add(j)
         assert list(bt) == list(bt.iterkeys())
-        assert list(bt.iteritems()) == zip(bt, bt.itervalues())
-        assert list(bt.iterkeys()) == bt.keys()
-        assert list(bt.itervalues()) == bt.values()
-        assert list(bt.iteritems()) == bt.items()
+        assert list(bt.iteritems()) == list(zip(bt, bt.itervalues()))
+        assert list(bt.iterkeys()) == list(bt.keys())
+        assert list(bt.itervalues()) == list(bt.values())
+        assert list(bt.iteritems()) == list(bt.items())
 
     def reversed(self):
         bt = BTree()
-        map(bt.add, range(100))
+        for j in range(100):
+            bt.add(j)
         assert list(reversed(bt)) == list(reversed(list(bt)))
 
     def items_backward(self):
         bt = BTree()
-        map(bt.add, range(100))
+        for j in range(100):
+            bt.add(j)
         assert list(reversed(bt.items())) == list(bt.items_backward())
 
     def items_from(self):
         bt = BTree()
-        map(bt.add, range(100))
+        for j in range(100):
+            bt.add(j)
         for cutoff in (-1, 1, 50.1, 100, 102):
             assert (list([(x, y) for (x, y) in bt.items() if x >= cutoff]) ==
                     list(bt.items_from(cutoff)))
@@ -131,7 +141,8 @@ class CoverageTest(UTest):
 
     def items_backward_from(self):
         bt = BTree()
-        map(bt.add, range(100))
+        for j in range(100):
+            bt.add(j)
         for cutoff in (-1, 1, 50.1, 100, 102):
             expect = list(reversed([(x, y) for (x, y) in bt.items()
                                     if x < cutoff]))
@@ -144,7 +155,8 @@ class CoverageTest(UTest):
 
     def items_range(self):
         bt = BTree()
-        map(bt.add, range(100))
+        for j in range(100):
+            bt.add(j)
         lo = 0
         hi = 40
         for lo, hi in [(-1,10), (3, 9), (30, 200), (-10, 200)]:
@@ -191,7 +203,8 @@ class CoverageTest(UTest):
 
     def search(self):
         bt = BTree(BNode)
-        map(bt.add, range(100))
+        for j in range(100):
+            bt.add(j)
         assert bt[1] == True
         try:
             assert bt[-1]
@@ -207,26 +220,30 @@ class CoverageTest(UTest):
 
     def get(self):
         bt = BTree()
-        map(bt.add, range(10))
+        for j in range(10):
+            bt.add(j)
         assert bt.get(2) == True
         assert bt.get(-1) == None
         assert bt.get(-1, 5) == 5
 
     def contains(self):
         bt = BTree()
-        map(bt.add, range(10))
+        for j in range(10):
+            bt.add(j)
         assert 2 in bt
         assert -1 not in bt
 
     def has_key(self):
         bt = BTree()
-        map(bt.add, range(10))
+        for j in range(10):
+            bt.add(j)
         assert bt.has_key(2)
         assert not bt.has_key(-1)
 
     def clear(self):
         bt = BTree()
-        map(bt.add, range(10))
+        for j in range(10):
+            bt.add(j)
         assert bt.has_key(2)
         bt.clear()
         assert not bt.has_key(2)
@@ -235,19 +252,24 @@ class CoverageTest(UTest):
     def update(self):
         bt = BTree()
         bt.update()
-        assert not bt.items()
+        assert not list(bt.items())
         bt.update(a=1)
-        assert bt.items() == [('a', 1)]
+        assert list(bt.items()) == [('a', 1)]
         bt = BTree()
         bt.update(dict(b=2), a=1)
-        assert len(bt.items()) == 2
+        assert len(list(bt.items())) == 2
         assert bt['b'] == 2
         assert bt['a'] == 1
         bt = BTree()
         bt.update([('b', 2)], a=1)
-        assert len(bt.items()) == 2
+        assert len(list(bt.items())) == 2
         assert bt['b'] == 2
         assert bt['a'] == 1
+        class Fake(object):
+            def items(self):
+                return [('1',2)]
+        bt.update(Fake())
+        raises(TypeError, bt.update, 1, 2)
 
     def insert_item(self):
         # This sequences leads to a splitting where
@@ -268,38 +290,40 @@ class CoverageTest(UTest):
         for i, key in enumerate(keys):
             bt[key] = i
             assert bt[key] is i, (i,  key, bt[key])
+        # Test set_bnode_minimum_degree()
+        assert bt.get_depth() == 2, bt.get_depth()
+        assert bt.get_node_count() == 7, bt.get_node_count()
+        assert bt.set_bnode_minimum_degree(4) == True
+        assert bt.get_depth() == 3, bt.get_depth()
+        assert bt.get_node_count() == 34, bt.get_node_count()
 
 
 class SlowTest(UTest):
 
     def slow(self):
-        bt = BTree()
-        print 'bt = BTree()'
-        d = {}
-        number = 0
-        limit = 10000
-        for k in xrange(limit*10):
-            number = randint(0, limit)
-            if number in bt:
-                assert number in d
-                if randint(0, 1) == 1:
-                    del bt[number]
-                    del d[number]
-                    print 'del bt[%s]' % number
-            else:
-                if number in d:
-                    print number
-                    print number in bt
-                    print number in d
-                    assert number not in d
-                bt[number] = 1
-                d[number] = 1
-                print 'bt[%s] = 1' % number
-            if k % limit == 0:
-                d_items = d.items()
-                d_items.sort()
-                assert d_items == bt.items()
-                assert len(d_items) == len(bt)
+        for bnode_class in BNode.__subclasses__():
+            if bnode_class.minimum_degree not in (4, 16):
+                continue
+            sys.stdout.write('\nbnode_class=%s' % bnode_class)
+            bt = BTree(bnode_class)
+            d = {}
+            number = 0
+            limit = 10000
+            for k in range(limit*10):
+                number = randint(0, limit)
+                if number in bt:
+                    assert number in d
+                    if randint(0, 1) == 1:
+                        del bt[number]
+                        del d[number]
+                        sys.stdout.write('\ndel bt[%s]' % number)
+                else:
+                    bt[number] = 1
+                    d[number] = 1
+                if k % limit == 0:
+                    d_items = sorted(d.items())
+                    assert d_items == list(bt.items())
+                    assert len(d_items) == len(bt)
 
 class DurusTest(UTest):
 

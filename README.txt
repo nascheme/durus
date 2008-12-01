@@ -19,9 +19,7 @@ Durus offers an easy way to use and maintain a consistent collection
 of object instances used by one or more processes.  Access and change
 of a persistent instances is managed through a cached Connection
 instance which includes commit() and abort() methods so that changes
-are transactional.  Durus is best suited to collections of less than a
-million instances with relatively stable state.
-
+are transactional. 
 
 * Quick Demo:
 
@@ -29,11 +27,11 @@ Run "durus -s" in one window.  This starts a durus storage server
 using a temporary file and listening for clients on localhost port
 2972.  Run "durus -c" in another window.  This connects to the storage
 server on the port 2972 on the localhost.  When you start, you have
-access to only one persistent object, "root". If you make changes to
-attributes of root and run "connection.commit()", the changes are
-written to the (temporary) file.  If you make changes to attributes of
-root, and then run "connection.abort()", the attributes revert back to
-the values they had at the last commit.
+access to only one dictionary-like persistent object, "root". If you 
+make changes to items of root and run "connection.commit()", the changes 
+are written to the (in this case, temporary) file.  If you make changes 
+to attributes of root, and then run "connection.abort()", the attributes 
+revert back to the values they had at the last commit.
 
 Run *another* "durus -c" in a third window, and you can see how
 committed changes to root in the first client are available in
@@ -41,13 +39,15 @@ the second client when it starts.  Subsequent changes committed in
 any client are visible in any other client that synchronizes by calling
 either "connection.abort()" or "connection.commit()".
 
-To stop the running durus server, run "durus -s --stop".
+You can stop the server by Control-C or by running "durus -s --stop".
+You can stop the clients by Control-D or by your usual method of terminating
+a python interaction.
 
-This demonstrates transactional behavior, but not persistence, since
+This demonstrates simple transactional behavior, but not persistence, since
 the temporary file is removed as soon as the durus server is stopped.
 
-To see how persistence works, do the same thing, except add 
-"--file test.durus" to the command that starts the server.  Make
+To see how persistence works, follow the same procedure again, except 
+add "--file test.durus" to the command that starts the server.  Make
 changes to attributes of root, run "connection.commit()", and
 "durus -s --stop", and the changes to root will be stored in
 test.durus, so that you"ll see the changes again if you restart again
@@ -88,7 +88,7 @@ Note that the ClientStorage constructor supports the "address" keyword
 that you can use to specify the address to use.  The value must be either
 a (host, port) tuple or a string giving a path to use for a unix domain
 socket. If you provide the address you should be sure to start the
-storage server the same way.  The "durus" command line tool supports 
+storage server the same way.  The "durus" command line tool also supports 
 options to specify the address.
 
 The connection instance has a get_root() method that you can use to
@@ -124,13 +124,11 @@ Subsequent changes to x, or to new A instances put on attributes of X,
 and so on, will all be managed by the Connection just as for the root
 object.  This management of the Persistent instance continues as long
 as the instance is in the storage.  Sometimes, though, we wish to
-remove Persistent instances from the storage so that the file can be
-smaller.  This is done through an occasional call the Connection"s
-pack() method.  Packing a storage removes all stored data except what
-is required to store the state of Persistent instances that are
-reachable from the root object.  To remove an instance, therefore, you
-need to remove it from all instances that are reachable from the root
-object, and then you need to call the Connection's pack() method.
+remove "garbage" Persistent instances from the storage so that the file 
+can be smaller.  This garbage collection can be done manually by calling
+the Connection's pack() method.  If you are using a storage server to
+share a Storage, you can use the gcinterval argument to tell it to
+take care of garbage collection automatically.
 
 
 * Non-Persistent Containers.
@@ -152,33 +150,12 @@ PersistentList, both of which maintain a non-persistent container on a
 add calls to self._p_note_change() in every method that makes changes.
 
 
-* Computed Attributes:
-
-Durus includes (in durus.persistent) ComputedAttribute, a subclass of
-Persistent that allows computed values to be cached (for speed) in
-such a way that the cache can be flushed by changes committed in other
-Connections.  This invalidation of instances changed in another
-Connection works the way it does for other Persistent instances.  The
-difference is that changes to ComputedAttributes are noted, but not
-stored.
-
-ComputedAttribute objects have two useful methods: get() and
-invalidate().  The get() method requires as an argument a function that
-takes no arguments.  If there is a value cached then it is returned
-otherwise the function is called and it's return value is both cached
-and returned.  The invalidate() method must be called when the cached
-value is no longer valid.  The cached value will be discarded in all
-connections.
-
-
 * Copyright:
 
-Copyright (c) Corporation for National Research Initiatives 2007. All
+Copyright (c) Corporation for National Research Initiatives 2008. All
 Rights Reserved.
 
 
 * Source of Support:
 
 This work was supported by DARPA/MTO under Contract MDA972-03-1-0022.
-
-

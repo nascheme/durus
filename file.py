@@ -2,11 +2,13 @@
 $URL$
 $Id$
 """
-import os, os.path, fcntl
+import os, os.path
 from os.path import exists
 from tempfile import NamedTemporaryFile, _TemporaryFileWrapper
 if os.name == 'nt':
     import win32con, win32file, pywintypes # http://sf.net/projects/pywin32/
+else:
+    import fcntl
 
 class File (object):
     """
@@ -23,6 +25,8 @@ class File (object):
                 else:
                     self.file = open(name, 'r+b')
             else:
+                if readonly:
+                    raise OSError('No "%s" found.' % name)
                 self.file = open(name, 'w+b')
         if readonly:
             assert self.is_readonly()
@@ -82,11 +86,14 @@ class File (object):
         assert not self.is_readonly()
         if not self.has_lock:
             if os.name == 'nt':
-                win32file.LockFileEx(
-                    win32file._get_osfhandle(self.file.fileno()),
-                    (win32con.LOCKFILE_EXCLUSIVE_LOCK |
-                     win32con.LOCKFILE_FAIL_IMMEDIATELY),
-                    0, -65536, pywintypes.OVERLAPPED())
+                try:
+                    win32file.LockFileEx(
+                        win32file._get_osfhandle(self.file.fileno()),
+                        (win32con.LOCKFILE_EXCLUSIVE_LOCK |
+                         win32con.LOCKFILE_FAIL_IMMEDIATELY),
+                        0, -65536, pywintypes.OVERLAPPED())
+                except pywintypes.error:
+                    raise IOError("Unable to obtain lock")
             else:
                 fcntl.flock(self.file, fcntl.LOCK_EX | fcntl.LOCK_NB)
             self.has_lock = True
@@ -107,6 +114,9 @@ class File (object):
     def write(self, s):
         self.obtain_lock()
         self.file.write(s)
+        if os.name == 'nt':
+            # This flush helps the file knows where it ends.
+            self.file.flush()
 
     def truncate(self):
         self.obtain_lock()

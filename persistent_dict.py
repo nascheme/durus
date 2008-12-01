@@ -2,9 +2,9 @@
 $URL$
 $Id$
 """
-
 from copy import copy
 from durus.persistent import PersistentObject
+from durus.utils import iteritems
 
 class PersistentDict (PersistentObject):
     """
@@ -13,16 +13,16 @@ class PersistentDict (PersistentObject):
     """
     __slots__ = ['data']
 
-    data_is = dict
+    data_is = dict # for type checking using QP's spec module
 
     def __init__(self, *args, **kwargs):
         self.data = dict(*args, **kwargs)
 
-    def __cmp__(self, other):
-        if isinstance(other, PersistentDict):
-            return cmp(self.data, other.data)
-        else:
-            return cmp(self.data, other)
+    def __eq__(self, other):
+        return isinstance(other, PersistentDict) and self.data == other.data
+
+    def __ne__(self, other):
+        return not self == other
 
     def __len__(self):
         return len(self.data)
@@ -48,25 +48,27 @@ class PersistentDict (PersistentObject):
         return result
 
     def keys(self):
-        return self.data.keys()
+        return list(self.data.keys())
 
     def items(self):
-        return self.data.items()
+        return list(self.data.items())
 
     def iteritems(self):
-        return self.data.iteritems()
+        return iteritems(self.data)
 
     def iterkeys(self):
-        return self.data.iterkeys()
+        for k, v in self.iteritems():
+            yield k
 
     def itervalues(self):
-        return self.data.itervalues()
+        for k, v in self.iteritems():
+            yield v
 
     def values(self):
-        return self.data.values()
+        return list(self.data.values())
 
     def has_key(self, key):
-        return self.data.has_key(key)
+        return key in self.data
 
     def update(self, *others, **kwargs):
         self._p_note_change()

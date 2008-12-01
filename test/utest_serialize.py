@@ -6,6 +6,7 @@ from durus.connection import ROOT_OID
 from durus.persistent import Persistent, ConnectionBase
 from durus.serialize import ObjectWriter, ObjectReader, pack_record
 from durus.serialize import unpack_record, split_oids
+from durus.utils import join_bytes, as_bytes
 from sancho.utest import UTest, raises
 
 
@@ -41,14 +42,17 @@ class Test (UTest):
         class FakeConnection:
             pass
         self.r = r = ObjectReader(FakeConnection())
-        root = '\x80\x02cdurus.persistent_dict\nPersistentDict\nq\x01.\x80\x02}q\x02U\x04dataq\x03}q\x04s.\x00\x00\x00\x00'
+        root = ('\x80\x02cdurus.persistent_dict\nPersistentDict\nq\x01.'
+            '\x80\x02}q\x02U\x04dataq\x03}q\x04s.\x00\x00\x00\x00')
+        root = as_bytes(root)
         assert r.get_ghost(root)._p_is_ghost()
 
     def check_record_pack_unpack(self):
-        oid = '0'*8
-        data = 'sample'
+        oid = as_bytes('0'*8)
+        data = as_bytes('sample')
         reflist = ['1'*8, '2'*8]
-        refs = ''.join(reflist)
+        reflist =  list(map(as_bytes, reflist))
+        refs = join_bytes(reflist)
         result=unpack_record(pack_record(oid, data, refs))
         assert result[0] == oid
         assert result[1] == data
