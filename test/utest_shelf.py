@@ -42,9 +42,9 @@ class ShelfTest (UTest):
 
     def d(self):
         s = BytesIO(as_bytes('nope'))
-        assert raises(AssertionError, Shelf, s)
+        assert raises(AssertionError, Shelf, s, readonly=True)
         s = BytesIO(as_bytes("SHELF-1\nbogus"))
-        assert raises(ShortRead, Shelf, s)
+        assert raises(ShortRead, Shelf, s, readonly=True)
 
     def e(self):
         f = File()

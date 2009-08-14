@@ -1,3 +1,32 @@
+3.9: (2009-08-?)
+
+Remove FileStorage2 support.  ShelfStorage is *the* FileStorage implementation
+now.  If you have a data file that uses the FileStorage2 format, use the
+db_to_shelf.py script with the Durus 3.8 release to convert it before
+upgrading to this Durus release. 
+
+Remove masterhost/masterport options from durus script.
+
+The pack() method on FileStorage did raise an AssertionError when there
+was an attempt to pack a temporary file or a readonly file.  Now it just
+skips the packing.
+
+New oids were not cross-checked against pending invalidations, and this could
+cause unnecessary WriteConflict exceptions.  Now they are.
+
+Change the strategy for identifying garbage-collected oids.
+Instead of looping again through all of the oids, loop over the
+holes in the new shelf's index. 
+This change should make packing much quicker in most cases.
+
+Add Shelf.get_offset_map() method.
+
+Update primary setup.py files so that the use of distutils, rather than 
+setuptools, can be forced by having USE_DISTUTILS defined in the
+environment.
+
+Change Shelf to grab a lock up front whenever it is not explicitly readonly.
+
 3.8: (2008-12-03)
 
 Revise all code so that it is functional in both python 2 and python 3.

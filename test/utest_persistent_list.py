@@ -57,7 +57,6 @@ class PersistentListTest (UTest):
         assert not p > p2
         p.append(3)
         assert p != p2
-        assert cmp(p, p2) == 1
 
     def delete(self):
         p = PersistentList(x for x in interval(10))

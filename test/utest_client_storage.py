@@ -48,6 +48,7 @@ class ClientTest (UTest):
             cmd.append("--port=%s" % self.address[1])
         else:
             cmd.append("--address=%s" % self.address)
+        cmd.append("--logginglevel=1")
         output = open(devnull, 'w')
         #output = sys.__stdout__
         Popen(cmd, stdout=output, stderr=output)
@@ -130,6 +131,22 @@ class ClientTest (UTest):
         r1['b']['new'].bogus
         assert c1.get(a_oid).__class__ == Persistent
         s1.close()
+
+    def check_oid_reuse_with_invalidation(self):
+        connection = Connection(ClientStorage(address=self.address))
+        root = connection.get_root()
+        root['x'] = Persistent()
+        connection.commit()
+        connection = Connection(ClientStorage(address=self.address))
+        root = connection.get_root()
+        root['x'] = Persistent()
+        connection.commit()
+        connection.pack()
+        sleep(1) # Make sure pack finishes.
+        connection = Connection(ClientStorage(address=self.address))
+        root = connection.get_root()
+        root['x'] = Persistent()
+        connection.commit()
 
     def check_write_conflict(self):
         s1 = ClientStorage(address=self.address)

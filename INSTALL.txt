@@ -16,9 +16,9 @@ faster.  You will need a C compiler to build the extension.
 Go to http://www.mems-exchange.org/software/durus and download the
 latest version.
 Untar the tarball with a command like this:
-    tar zvxf Durus-3.8.tar.gz
+    tar zvxf Durus-3.9.tar.gz
 Move into the Durus source directory:
-    cd Durus-3.8
+    cd Durus-3.9
 Here is the standard installation command, with the additional option
 that creates a "durus.installed" file containing the list of installed
 files.

@@ -38,9 +38,6 @@ class PersistentList (PersistentObject):
     def __ge__(self, other):
         return self is other or self.data >= self.__cast(other)
 
-    # def __cmp__(self, other):
-    #     return cmp(self.data, self.__cast(other))
-
     def __contains__(self, item):
         return item in self.data
 

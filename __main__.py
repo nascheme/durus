@@ -114,15 +114,9 @@ def client_main():
                        options.cache_size, options.readonly, options.repair,
                        options.startup)
 
-def get_storage(file, repair, readonly, masterhost, masterport):
-    if masterport and file:
-        sys.stdout.write("Provide a file or a masterport, but not both.\n")
-        raise SystemExit
+def get_storage(file, repair, readonly):
     if file:
         return FileStorage(file, repair=repair, readonly=readonly)
-    elif masterport:
-        port = int(masterport)
-        return ClientStorage(host=masterhost, port=port)
     else:
         return TempFileStorage()
 
@@ -137,8 +131,6 @@ def start_durus(logfile, logginglevel, address, storage, gcbytes):
     if isinstance(storage, FileStorage):
         log(20, 'Storage file=%s address=%s',
             storage.get_filename(), socket_address)
-    else:
-        log(20, 'Storage master=%s address=%s', storage.address, socket_address)
     StorageServer(storage, address=socket_address, gcbytes=gcbytes).serve()
 
 def stop_durus(address):
@@ -167,17 +159,10 @@ def run_durus_main():
         help='Port to listen on. (default=%s)' % DEFAULT_PORT)
     parser.add_option(
         '--file', dest='file', default=None,
-        help=('If neither this nor masterhost is given, the storage is '
-        'in a new temporary file.'))
+        help=('If not given, the storage is in a new temporary file.'))
     parser.add_option(
         '--host', dest='host', default=DEFAULT_HOST,
         help='Host to listen on. (default=%s)' % DEFAULT_HOST)
-    parser.add_option(
-        '--masterhost', dest='masterhost', default=DEFAULT_HOST,
-        help='Host of master storage server. (default=%s)' % DEFAULT_HOST)
-    parser.add_option(
-        '--masterport', dest='masterport', default=None,
-        help='Port of masterhost. (default=None)')
     parser.add_option(
         '--gcbytes', dest='gcbytes', default=DEFAULT_GCBYTES, type='int',
         help=('Trigger garbage collection after this many commits. (default=%s)' %
@@ -228,8 +213,7 @@ def run_durus_main():
         start_durus(options.logfile,
                     options.logginglevel,
                     address,
-                    get_storage(options.file, options.repair, options.readonly,
-                        options.masterhost, options.masterport),
+                    get_storage(options.file, options.repair, options.readonly),
                     options.gcbytes)
     else:
         stop_durus(address)

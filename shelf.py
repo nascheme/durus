@@ -71,6 +71,8 @@ class Shelf (object):
             assert not repair
         elif not hasattr(file, 'seek'):
             file = File(file, readonly=readonly)
+        if not readonly:
+            file.obtain_lock()
         file.seek(0, 2) # seek end
         if file.tell() == 0:
             # The file is empty.
@@ -273,6 +275,9 @@ class Shelf (object):
 
     def __contains__(self, name):
         return self.get_position(name) != None
+
+    def get_offset_map(self):
+        return self.offset_map
 
     def get_file(self):
         return self.file

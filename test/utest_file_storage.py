@@ -5,7 +5,6 @@ $Id$
 from durus.connection import Connection
 from durus.file import File
 from durus.file_storage import TempFileStorage, FileStorage
-from durus.file_storage import ShelfStorage
 from durus.logger import direct_output
 from durus.persistent import Persistent
 from durus.serialize import pack_record
@@ -40,13 +39,8 @@ class FileStorageTest (UTest):
         b.end()
         assert len(list(b.gen_oid_record(start_oid=int8_to_str(0)))) == 1
         assert len(list(b.gen_oid_record())) == 2
-        if os.name != 'nt': # don't try to re-open an open file on windows
-            c = FileStorage(name, readonly=True)
-            raises(AssertionError, c.pack)
         b.pack()
         b.close()
-        if os.name != 'nt':
-            c.close()
         unlink(name + '.prepack')
         raises(ValueError, b.pack) # storage closed
         unlink(name + '.pack')
@@ -58,7 +52,11 @@ class FileStorageTest (UTest):
         filename = f.get_filename()
         if os.name == 'nt':
             f.close() # don't try to re-open an open file on windows
-        g = FileStorage(filename)
+            return
+        g = FileStorage(filename, readonly=True)
+        raises(IOError, FileStorage, filename)
+        f.close()
+        g.close()
 
     def check_open_empty(self):
         name = mktemp()
@@ -104,7 +102,7 @@ class FileStorageTest (UTest):
         p = f.tell()
         f.write(as_bytes('b'))
         f.flush()
-        raises(ShortRead, FileStorage, name)
+        raises(ShortRead, FileStorage, name, readonly=True)
         h = FileStorage(name, repair=True)
         f.seek(0, 2)
         assert p == f.tell()
@@ -119,7 +117,7 @@ class ShelfStorageTest (UTest):
         f = File(prefix='shelftest')
         name = f.get_name()
         f.close()
-        s = ShelfStorage(name)
+        s = FileStorage(name)
         c = Connection(s)
         r = c.get_root()
         for x in range(10):
@@ -157,7 +155,7 @@ class ShelfStorageTest (UTest):
         f = File(prefix='shelftest')
         name = f.get_name()
         f.close()
-        s = ShelfStorage(name)
+        s = FileStorage(name)
         c = Connection(s)
         r = c.get_root()
         for x in range(10):
@@ -178,7 +176,7 @@ class ShelfStorageTest (UTest):
         f = File(prefix='shelftest')
         name = f.get_name()
         f.close()
-        s = ShelfStorage(name)
+        s = FileStorage(name)
         c = Connection(s)
         r = c.get_root()
         for x in range(10):
@@ -192,6 +190,7 @@ class ShelfStorageTest (UTest):
         r.clear()
         c.commit()
         c.pack()
+        c.abort()
         new_oid = s.new_oid()
         assert new_oid == int8_to_str(1), repr(new_oid)
         new_oid = s.new_oid()

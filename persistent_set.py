@@ -19,9 +19,6 @@ class PersistentSet (PersistentObject):
         else:
             return self.__class__(self.s & other)
 
-    # def __cmp__(self, other):
-    #     raise TypeError("cannot compare PersistentSets using cmp()")
-
     def __contains__(self, item):
         return item in self.s
 

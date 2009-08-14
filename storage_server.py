@@ -7,7 +7,7 @@ from durus.error import ReadConflictError, ConflictError
 from durus.logger import log, is_logging
 from durus.serialize import extract_class_name, split_oids
 from durus.utils import int4_to_str, str_to_int4, str_to_int8, read, write
-from durus.utils import read_int4, read_int4_str, write_int4_str, xrange
+from durus.utils import read_int4, read_int4_str, write_int4_str
 from durus.utils import join_bytes, write_all, next, as_bytes
 from os.path import exists
 from time import sleep
@@ -267,7 +267,15 @@ class StorageServer (object):
         assert 0
 
     def _new_oids(self, s, count):
-        oids = [self.storage.new_oid() for j in xrange(count)]
+        oids = []
+        while len(oids) < count:
+            oid = self.storage.new_oid()
+            for client in self.clients:
+                if oid in client.invalid:
+                    oid = None
+                    break
+            if oid is not None:
+                oids.append(oid)
         self._find_client(s).unused_oids.update(oids)
         return oids
 

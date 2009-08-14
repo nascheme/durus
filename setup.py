@@ -7,8 +7,9 @@ import re, sys, os
 assert sys.version >= "2.4"
 
 try:
+    assert 'USE_DISTUTILS' not in os.environ
     from setuptools import setup, Extension
-except ImportError:
+except (ImportError, AssertionError):
     from distutils.core import setup
     from distutils.extension import Extension
 

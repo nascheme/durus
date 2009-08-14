@@ -9,7 +9,7 @@ need for this purpose, and no more.  If you are looking for a
 language-independent, long term persistent storage system for digital
 objects of all kinds, designed to provide secure, managed access to
 extensible server-side information services, you should read more
-about CNRI's Digital Object Store® at
+about CNRI's Digital Object StoreÂ® at
 http://www.cnri.reston.va.us/digital_object_store.html.
 
 
@@ -152,7 +152,7 @@ add calls to self._p_note_change() in every method that makes changes.
 
 * Copyright:
 
-Copyright (c) Corporation for National Research Initiatives 2008. All
+Copyright (c) Corporation for National Research Initiatives 2009. All
 Rights Reserved.
 
 
