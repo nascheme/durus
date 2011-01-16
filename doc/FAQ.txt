@@ -1,0 +1,157 @@
+Frequently Asked Questions about Durus
+======================================
+
+
+Q:
+    How do I backup a database?  Do I need to shutdown the storage
+    server first?
+
+A:
+    It is safe to just copy the file.  Data is only appended to the file
+    and the FileStorage class can detect if the last transaction has
+    been truncated.  There is no need to shutdown the storage server
+    first.  Because writes are isolated, a utility such as rsync
+    can be used for efficient backups.  If you are setting up a backup
+    system for Durus database files, consider rsync (version 3.0.2 or higher)
+    with the "--append" and/or "--append-verify" flags.
+
+
+Q:
+    I made a change in one client but it is not visible in another
+    client.
+
+A:
+    You need to call ``commit()`` or ``abort()`` in the second client in
+    order to see the new data.  This behavior is necessary to provide
+    data consistency.  
+
+
+Q:
+    My client has received a ``ConflictError`` or ``ReadConflictError``.
+    What must it do to recover?
+
+A:
+    The client must call ``abort()`` and restart the transaction.  Note
+    that it must not keep partial results in local variables, for example,
+    since the data it was using before the conflict was out of date.
+
+
+Q:
+    When does a write conflict occur?
+
+A:
+    If, in the period since the last time client A called
+    ``commit()``/``abort()``, client A has accessed an attribute of a
+    PersistentObject instance X and some other client has also committed changes
+    to X, then a ``ConflictError`` exception will be raised when client A tries
+    to commit any changes.  This prevents client A from committing changes that
+    are based on out-of-date data.
+
+
+Q:
+    When does a read conflict occur?
+
+A:
+    The exact conditions under which a ``ReadConflictError`` is raised
+    are complicated so the source code is probably the best reference.
+    In essence, a read conflict occurs when a client tries to load data
+    from the storage server that is inconsistent with other data that it has
+    accessed since the last ``commit()``/``abort()``.
+
+    For example, a client examines object A, a second client modifies object 
+    A and object B.  If the first client tries to load object B it will get 
+    a read conflict error.  The state of object A, already accessed, is not 
+    consistent with the state of B.
+
+
+Q:
+    I've made changes to my object model.  How do I update an existing
+    database?
+
+A:
+    We have found that a separate database update script works well.
+
+
+Q:
+    I need to find all objects of a certain class in order to update
+    their attributes.
+
+A:
+    If you can't easily find them by following the object graph then you
+    can use the ``gen_every_instance()`` function from the ``connection``
+    module.  Note that this is expensive since it iterates over every
+    record in the database.  We use it only for making data model
+    changes.
+
+
+Q:
+    I want to rename a class.  How do I update the database?
+
+A:
+    Here is an example script::
+    
+        import new_module
+        import old_module
+        # Put the new class where the old class was.
+        old_module.OldClass = new_module.NewClass
+        # Open the connection.
+        from durus.connection import Connection
+        from durus.connection import gen_every_instance, touch_every_reference
+        connection = Connection("myfile.durus")
+        # Make sure that every instance of the class is marked as changed.
+        for obj in gen_every_instance(connection, old_module.OldClass):
+            obj._p_note_change()
+        # Make sure that every referring instance is marked as changed.        
+        touch_every_reference('OldClass')
+        connection.commit()
+
+    If your database structure is clear enough, you should iterate over 
+    every instance using something more direct than gen_every instance().
+    If you have a direct way to iterate over the instances that contain 
+    references to instances of OldClass, do that instead of 
+    touch_every_reference() and call _p_note_change() on each of them.  
+
+
+Q:
+    I want to rename a module that includes a PersistentObject subclass.  
+    How do I update the database?
+
+A:
+    This is basically the same as changing a class name.  A useful trick
+    is to assign to ``sys.modules`` directly.  For example, in your update
+    DB script you could do something like::
+   
+       import newmodule
+       sys.modules["oldmodule"] = newmodule
+
+
+Q:
+    Is Durus thread-safe?
+
+A:
+    Durus Connections using ClientStorage should be safe to use in multiple 
+    threads in the same process as long as no individual Connection or 
+    ClientStorage instance or any of the PersistentObject instances obtained 
+    from that Connection are accessed from more than one thread.
+    
+    Our applications use multiple processes when they need multiple threads 
+    of control.
+
+
+Q:
+    Can a Durus application use multiple Durus databases?
+
+A:  
+    Yes, and this may be a good idea if you have data sets that are
+    independent.  The thing you can't do is put a reference to
+    an object from Connection A into an object from Connection B.
+
+
+Q:
+    Does Durus support "undo"?
+
+A:
+    No.  If you need this capability, you should handle it directly
+    in your application-level code.
+
+    

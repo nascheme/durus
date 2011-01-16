@@ -1,0 +1,7 @@
+#!/usr/bin/env python
+"""
+$URL: svn+ssh://svn.mems-exchange.org/repos/trunk/durus/durus $
+$Id: durus 30681 2008-04-07 21:11:37Z dbinger $
+"""
+import durus.__main__
+durus.__main__.main()

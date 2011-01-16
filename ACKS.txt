@@ -1,0 +1,30 @@
+Durus was inspired by ZODB and ZEO, the database and client/server
+code produced by our friends at Zope, Inc.  Like ZODB, Durus
+implements a pickle storage system and manages instances of a
+Persistent class in a transactional way.  Like ZEO, Durus supports
+access to a shared storage from connections in multiple processes.
+
+The code of Durus shares some small fragments and some names with code
+in ZODB/ZEO, but we do not consider Durus to be a modification of
+ZODB/ZEO.
+
+Durus was developed by the MEMS Exchange software team:
+
+Anton Benard 
+David Binger 
+Roger Masse 
+Neil Schemenauer
+
+Neil initiated work on Durus and made it fast.
+
+--
+
+Other Contributors:
+
+Andrew Kuchling
+Patrick K. O'Brien
+Jesus Cea Avion
+John Belmonte
+Andrew Bettison
+Sergio Álvarez Muñoz
+Matthew Scott

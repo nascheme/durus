@@ -1,0 +1,658 @@
+3.9: (2009-08-?)
+
+Remove FileStorage2 support.  ShelfStorage is *the* FileStorage implementation
+now.  If you have a data file that uses the FileStorage2 format, use the
+db_to_shelf.py script with the Durus 3.8 release to convert it before
+upgrading to this Durus release. 
+
+Remove masterhost/masterport options from durus script.
+
+The pack() method on FileStorage did raise an AssertionError when there
+was an attempt to pack a temporary file or a readonly file.  Now it just
+skips the packing.
+
+New oids were not cross-checked against pending invalidations, and this could
+cause unnecessary WriteConflict exceptions.  Now they are.
+
+Change the strategy for identifying garbage-collected oids.
+Instead of looping again through all of the oids, loop over the
+holes in the new shelf's index. 
+This change should make packing much quicker in most cases.
+
+Add Shelf.get_offset_map() method.
+
+Update primary setup.py files so that the use of distutils, rather than 
+setuptools, can be forced by having USE_DISTUTILS defined in the
+environment.
+
+Change Shelf to grab a lock up front whenever it is not explicitly readonly.
+
+3.8: (2008-12-03)
+
+Revise all code so that it is functional in both python 2 and python 3.
+Note that this has not been tested much in python 3.  Storage files created
+using python 2 must be converted to work with python 3.  A db_to_py3k.py
+script is included for this purpose.
+
+This release requires Python version 2.4 or later.
+
+Implement call_if_persistent and use it to guard calls to persistent_id()
+during pickling.  In one benchmark, this reduces commit() time by 50%.
+
+Make ShelfStorage the default FileStorage implementation.
+The FileStorage2 implementation is supported in this release,
+but deprecated.  
+To convert formats, use "db_to_shelf.py old.durus new.durus".
+
+Add support for automatic garbage collection.
+Add an "gcbytes" keyword argument to StorageServer.  When the gcbytes
+value is a positive number, it gives the number of bytes to commit
+between garbage collections of the Storage.  The garbage collections
+are done automatically and incrementally when the StorageServer is not handling 
+other client requests.
+
+Add BTree.get_depth() and  BTree.get_node_count() so that it is possible 
+to know something of the dimensions of a given BTree.
+
+Add BTree.set_bnode_minimum_degree() so that you control the depth of a BTree.
+
+Add Cache.__iter__(), so that it is easier to examine the objects currently
+in the cache.
+
+Implement __eq__() and __ne__() for PersistentDict, but remove __cmp__().
+Drop support for comparing a PersistentDict to a plain dict.
+
+Instead of using a set for recent_objects, use a special 
+ReferenceContainer class.  This removes the necessity for
+persistent instances to be hashable.
+
+Remove the time-travel Connection from Durus.
+
+Add BitArray.items()
+Add Byte.byte()
+Remove ByteArray.__str__().
+
+Add byte_string to utils.
+Add join_bytes(), empty_byte_string, and as_bytes() to utils.
+Make write() call as_bytes() on the argument so that write(f, 'foo')
+works in python 2 and python 3.
+Add write_all() to utils so that callers don't need to concatenate
+their arguments.
+
+Add a flush() after every write() on Windows.
+This appears to fix a problem that shows up when using ShelfStorage.
+The problem was detected and fixed by Matthew Scott.  Thanks.
+Also change the nt implemention of obtain lock so that failure
+to obtain a lock raises an IOError, as on other systems, instead
+of a pywintypes.error.
+
+Patch imports to work on nt.  Posted by Sergio Alvarez.
+
+Fix bug in FileStorage constructor that would prevent a file from
+being opened as readonly when another process has it open readwrite.
+
+Add Shelf.items().
+
+Remove Storage.get_size(), FileStorage2.get_size().
+
+Remove support for calling _p_note_change() by assigning to
+the "_p_changed" attribute.  If your code uses the attribute-setting
+style, it should be updated to just call the method directly.
+The attribute-setting notation is riskier because you may set the wrong
+attribute, or set the right attribute on a non-persistent object, 
+and get unexpected results.
+
+Remove the "pack_storage.py" script.  If you have cron jobs that were 
+using this, you should change them to use "durus -p" instead.
+
+3.7: (2007-05-02)
+
+     * Fix a bug in BTree insert_item().  The bug was discovered by 
+       Andrew Bettison, and he contributed the patch to fix it.  The exact
+       change can be seen by comparing the BNode insert_item() implementation
+       in the 3.7 and 3.6 releases.  Thanks, Andrew.
+
+     * Make bulk_load safer by consuming the entire response from the server
+       before yielding any results.  Also provide additional checks on oids
+       list that is passed in.
+
+     * Add keyword arguments to the BTree range iteration methods to
+       allow the caller to include or exclude items on the boundary of
+       the range.
+
+     * Add Connection.get_load_count(), which returns the number of
+       times any object's state has been loaded.  The idea is to
+       provide some information that applications could use to make
+       cache size adjustments at run time.
+
+     * Repair docstring on FileStorage.sync().
+
+     * Fix a bug in Connection.get_crawler() that caused loaded
+       objects to be included twice in the generated sequence.
+
+     * Rename low-level conversion functions.
+       p64 -> int8_to_str
+       p32 -> int4_to_str
+       u64 -> str_to_int8
+       u32 -> str_to_int4
+
+       Add utility functions:
+       read()
+       write()
+       read_int4()
+       write_int4()
+       read_int8()
+       write_int8()
+       read_int4_str()
+       write_int4_str()
+       read_int8_str()
+       write_int8_str()
+
+       Run file and socket io through these utils.
+       A module variable durus.utils.TRACE can be set
+       to trace all I/O, as it runs through read()/write().
+
+     * Add ShortRead, a subclass of IO that is raised when
+       read() can't find the expected number of bytes.
+
+     * Add IntSet, a class for compact representation of sets of
+       natural numbers (such as the set of all oids in a Durus
+       database).  This may be useful for packing of large databases,
+       where traversal requires keeping track of the set of oids
+       already visited.
+
+     * Add a File class for use by FileStorage.  The intent is to
+       provide methods that wrap platform-specific differences in
+       locking, syncing, renaming, etc.
+
+     * Add data array classes to utils.  Byte, BitArray, ByteArray,
+       WordArray, and IntArray.  The objective of this is to provide
+       support holding large sets/arrays either either in memory or on
+       disk by wrapping file-like objects that hold the bytes.
+       
+     * Add a new, experimental, type of FileStorage.  The new
+       type of FileStorage is called ShelfStorage.  It stores the offset
+       index (at the time of the last pack) using an array format that
+       can be used directly from disk.  This makes the storage 
+       start-up time and memory requirement vary with the number 
+       of objects saved since the last pack, whereas in the 
+       standard FileStorage format (FileStorage2), the start-up time
+       and the memory vary with the total number of objects stored
+       in the database.  The new shelf.py module can be used as
+       a script to convert an existing FileStorage into the new
+       format.  ShelfStorage is still new and it has not been tested
+       nearly as well as FileStorage.  Please keep that in mind
+       if you try it.
+
+     * Don't depend on FileStorage readonly flag for History.
+       Just make end() raise a RuntimeError.
+
+     * Unlink rename target if it exists.
+
+     * Use File class for wrapping the FileStorage file.  Locking is
+       delayed until write, or other destructive operations are
+       attempted.  Don't save "repair" value on an attribute.  Don't
+       set fp to None when close() is called.
+
+     * If an old ".pack" file is found, clobber it instead of raising
+       an exception.  The old file is assumed to be left from a
+       previous pack that was stopped before completion.
+
+     * Call close() on graceful quit.
+
+     * Avoid leaving tempfiles around when tests execute.
+       Make test socket be in /tmp, to avoid permissions problems.
+
+     * Make extract_class_name() guard against bogus records.
+       Otherwise, a bogus record will crash a server that uses
+       extract_class_name() for logging.
+
+     * Make stop_durus() attempt to wait until the server stops
+       listening.
+
+     * Improve load record format: include pid.
+
+     * Add some assertions that guard against duplicate oid allocation.
+     
+     * Remove durus.utils.format_oid().  Use obj._p_format_oid() instead.
+
+3.6: (2006-11-15):
+
+    * Add support for persistent instances that use slots for state data.
+      Separate the Persistent class implementation into two classes, so
+      that Persistent inherits from a new class named 'PersistentObject'.
+      The PersistentObject defines a __slots__ value without including
+      '__dict__', so it is possible to have PersistentObject instances
+      that don't have '__dict__' values, which can reduce the amount of
+      RAM required to hold those instances.
+
+      Use PersistentObject instead of Persistent as the base class for
+      ComputedAttribute, PersistentDict, PersistentList, PersistentSet,
+      BTree, and BNode and define __slots__ on these classes for the 
+      attributes that they actually use.  This means that instances
+      that have any of these as the __class__ will no longer support
+      arbitrary attribute names.  For subclasses of any of these classes,
+      arbitrary attribute names are still be supported.
+
+    * Change __setstate__() so that it clears the existing state before
+      setting the new state.  __setstate__({}) or __setstate__(None) is
+      expected to clear the data attributes of any persistent instance.
+
+    * Add support a "root_class" keyword arg to the Connection constructor.
+      Make the root as an instance of this class (or PersistentDict if the
+      root_class value is None).
+      If the root_class value is given, verify that it really is the class
+      of the root instance.
+
+    * When making a new root instance, obtain the oid from the storage as
+      you would for any persistent instance.  The first call to
+      Storage.new_oid() must now return the expected ROOT_OID.
+
+      This establishes the invariant that every oid of a valid record that a
+      Storage is asked to store has an existing record or else it has been
+      returned by a call to the new_oid() method.
+
+    * When handling invalidations, immediately make ghosts of loaded instances that
+      have not already been accessed during this transaction.  Previously, the
+      oids of these objects were just saved in the invalid_oids set, and this
+      could lead to an AssertionError if commit() is called before abort().
+
+    * Hold a hard reference to the root instance to keep it in the cache. 
+
+    * Move PICKLE_PROTOCOL to a global constant in the serialize module.
+
+    * Add some low-level attribute-manipulation methods to the persistent
+      module.  These allow attribute manipulation that does not trigger
+      changes in the persistent state, even when using the C-implementation
+      of PersistentBase.
+
+    * Update HistoryConnection.  Don't depend on the existence of a __dict__
+      to signal that an object exists in the current transaction.
+
+    * Call _p_set_status_unsaved() in _p_note_change() instead of doing the
+      same thing in-line.  This allows subclasses that override 
+      _p_set_status_unsaved() to have those calls happen on every (normal)
+      transition to the unsaved state.
+
+    * Use a deque in gen_oid_storage so that we can call popleft()
+      instead of pop(0).
+
+    * When a start_oid is provided as an argument to gen_oid_record(),
+      it now yields (oid, record) pairs for objects that are reachable
+      from the given start record.
+      Consequently, this code can be shared by the FileStorage pack
+      and the Connection crawler methods.
+
+    * Make WriteConflictError a separate class, so that read and write
+      conflicts can be explicitly distinguished.  
+      When attempts to read or or commit are made after a conflict has
+      been raised, but before abort() has been called, raise an
+      AssertionError instead of a new ConflictError.
+
+    * Add ObjectDictionary class, used for holding the references in the cache.
+      This is like a WeakValueDictionary, except that the actual deleting of
+      oids is delayed until the next time there is an iteration, which is for
+      us at the time of the next call to shrink().
+
+    * Add BTree.note_change_of_bnode_containing_key() so that code managing
+      BTrees of non-persistent containers can be easier to understand.
+
+    * Change Connection.get() so that, when it pulls an object record from 
+      storage, it goes ahead and loads the object state.  The idea is that
+      calls to get() will almost always be followed by attribute accesses
+      on the returned object, so we should avoid the need to retrieve the
+      object record again.  Note that all Connections use get() to retrieve
+      the root instance.  This change means that the root state is loaded
+      immediately.
+
+    * Avoid potential KeyError when a reference has died but the key
+      has not yet been removed from the WeakValueDictionary.
+
+    * Change wait_for_server so that maxtries can be bigger than maxint.
+
+    * Add BTree.update().
+
+    * Make default get_packer() return None instead of raising 
+      NotImplementedError.
+
+    * Pass a handle_invalidations argument to self.storage.end().
+      If there is not an incremental packer, call the non-incremental one.
+
+    * Track unused allocated oids for each client.  Make sure that records 
+      submitted by one client do not use oids that have been allocated, but
+      not used, by another client.
+
+    * Add support for the storage server to use a Storage that may
+      report invalidations.
+
+    * Add command line options that allow starting a server that is a client
+      of another server.
+
+    * Remove the FileStorage format conversion script.
+    
+    * Remove support for FileStorage1 format.
+
+    * Change FileStorage.sync() so that, on the first call after a pack, it
+      returns the list of oids removed by the pack.
+
+    * Improve error message shown if run_durus.py fails.
+
+    * Run socket output through a sendall() function, just as input goes
+      through a recv() function.  
+      Add a TRACE global.  If TRACE is true, the socket traffic is
+      printed to stdout.
+      Treat IOError like ClientError.
+
+    * Add unit tests for PersistentList and PersistentDict.
+    
+    * Make PersistentDict.update() work with a variety of argument patterns,
+      like dict.update().
+      
+    * Revise implementation of PersistentDict.copy().
+
+    * Make sure that the client does not wait for reply status in the unlikely
+      event that it has requested to commit an empty transaction.
+
+    * Remove InvalidObjectReferenceError.  Just use ValueError.
+    
+    * Add a default Storage.close() method.
+    
+3.5: (2006-08-16):
+
+    * Fix a bug introduced in version 3.4 that could, under certain conditions,
+      allow conflicts to be missed.  In particular, if the last strong reference 
+      to a Persistent instance was removed, a conflict involving that instance
+      would be missed.  The fix involves changing the Persistent.__getattr__
+      so that it calls the 'note_access' method on the Connection.
+      This method creates a strong reference to the Persistent instance by
+      adding it to a 'recent_objects' set.  Objects are eventually removed from 
+      the recent_objects set when they are converted into ghosts in the cache's
+      shrink() method.  Since a set() is used for recent_objects, all Persistent 
+      instances *must* now be hashable.  PersistentSet instances were not, and
+      that has been changed.
+
+    * Revise the cache code.  It now uses a WeakValueDict instead of a plain dict
+      to hold the references.  This simplifies the code because we no longer need
+      to call the weakref instances directly.  It also helps the cache shrinking
+      loop because the weakref callbacks have an immediate impact on the size of
+      the mapping.
+    
+    * Remove the ghost_fraction attribute from the Cache.  It is no longer used 
+      in shrink().
+      
+    * Rename the Persistent '_p_touched' attribute to '_p_serial'.  This is
+      set, on every attribute access, to the value of the Connection's
+      'transaction_serial' attribute (which was formerly named 'sync_count').
+
+    * Add a bulk_load() method to Storage.  The ClientStorage implementation
+      reduces avoids latency delays be retrieving many object records with
+      a single request to the server.
+
+    * Add Connection.get_crawler().  This returns a generator for the sequence
+      of objects reachable from a given start OID.  The crawler uses the
+      new bulk_load() method for speed.  It can be used, with some care, to
+      initialize the object cache.
+
+    * Remove Connection.cache_get() and Connection.cache_set().
+
+    * Use set instead of Set throughout.  This means that Durus now requires 
+      Python version >= 2.4.
+
+    * Add the ability to set the owner, group, and umask when a unix domain
+      socket is used for a server.
+
+    * Attempt to clean up stale socket files when starting a server on a
+      unix domain socket.
+
+    * Move some repeated code related to addresses and sockets into a
+      SocketAddress class and subclasses HostPortAddress and
+      UnixDomainSocketAddress.
+
+    * In the server, add support for a protocol verification command.
+      Use this in the client constructor to allow orderly behavior if
+      the client and the server do not implement the same protocol.
+
+    * Add a server command for allocating blocks of oids.
+
+    * Add client support for maintaining and drawing from a pool of oids
+      allocated by the server.  This reduces the number of commands that 
+      must be sent to the server during a commit.
+
+    * Add support for recycling allocated oids when there is a conflict during
+      a commit.
+
+    * Make sure that the FileStorage constructor can work if the named file
+      exists, but is empty.
+
+    * Initialize sync_count to 1 so that new ghosts, for which _p_touched
+      is initialized to 0, never appear to have been accessed since the last
+      transaction.
+
+    * Move some logic used for unpickling references to the connection cache
+      so that it can be faster.  Add Cache.get_instance() for this purpose.
+      Add Connection.get_cache() so that the ObjectReader can use it.
+
+
+3.4.1: (2006-05-18):
+
+    * Fix a memory leak that was in the 3.4 tarball until 2006-05-12.
+
+    * Fix doc string errors.
+
+    * Fix initialization of _p_touched in python version of PersistentBase
+      to agree with the C implementation.
+
+3.4: (2006-05-11): 28347
+
+    * Refine the conflict avoidance and cache aging behavior.  Now conflicts
+      don't occur unless there is an invalid object for which this Connection 
+      has actually accessed an attribute since the last call to commit() or 
+      abort().  The Connection saves a "sync_count" on every commit() or abort().
+      On every access to (an ordinary) attribute of a Persistent instance,
+      the _p_touched is set to be the Connection's sync_count.
+      To make this possible without any significant performance penalty, 
+      the _p_connection and other '_p_' attributes are moved from 
+      Persistent to PersistentBase and implemented in C.
+      Also, a ConnectionBase class is implemented in C so that the
+      sync_count, which is needed so frequently, can be accessed directly
+      in the C implementation of PersistentBase.
+      
+      Since we now know which instances have actually been accessed since the
+      last commit() or abort(), the Connection no longer need to maintain the 
+      set of loaded_oids.  The cache manager can use the _p_touched to 
+      distinguish less recently used instances.
+      
+      The Cache class has a new ghost_fraction attribute.  The value of
+      this attribute defaults to 0.5 and can be any number between 0 and 1.
+      Higher values make the cache more aggressive about ghosting objects
+      as it tries to reduce the cache size.
+      
+      The Cache "held" attribute is removed, along with the hold() method.
+      
+    * Added a history.py module that defines HistoryConnection, a Connection
+      subclass that supports time-travel in a read-only FileStorage file.
+      The class provides next() and previous() methods for stepping 
+      among the stored transactions.  It also provides next_instance(obj)
+      and previous_instance(obj) for moving to to a transaction where
+      obj has a state that is different from the current state.  
+      Note that packing a FileStorage consolidates the transactions, so
+      the HistoryConnection can only move among the transactions since
+      the last pack.
+
+    * Make the durus client run in a __console__ module.  This makes it 
+      behave a little more like the regular Python interpreter.
+
+    * Add support for running the durus client/server connections through
+      unix domain sockets.  The ClientStorage and StorageServer constructors
+      accept an "address" keyword argument.  If the address value can be 
+      a (host, port) tuple or else a string giving a path use for the
+      unix domain socket.  The separate "host" and "port" keyword parameters 
+      are still supported, but they may be removed in future releases.  If your
+      code calls these constructors, please change it to use the "address"
+      keyword.
+      
+    * Change the recv() function used in the client/server to read in chunks
+      of at most 1 million bytes.  This avoids a malloc error observed when
+      running test/stress.py on an OS X machine with python 2.4.2.
+ 
+    * Make the durus server a little tougher.  If it gets an unknown command,
+      it now logs the error and closes the connection instead of crashing.
+      
+    * Add Storage.pack() and Storage.get_size().
+
+
+3.3: (2006-03-15): 28065
+
+    * Keep strong references to objects until we decide that they haven't 
+      been recently touched.  This limits the impact of the Python
+      garbage collector.
+
+    * Change the FileStorage class as needed to agree with the magic 
+      header string found in an existing file.  Do this no matter which
+      of the constructors (FileStorage, FileStorage1, or FileStorage2)
+      is called to create the instance.  Before this change, opening an
+      an existing file with the FileStorage2 constructor (instead of
+      the generic FileStorage constructor), raised an exception.
+
+    * Adjust logging.
+      
+      Before this change, the server logs the class of each object
+      when it is loaded if the logginglevel is at level 5 or below.
+      This changes that threshhold to level 4.
+
+      Now, when the logging level is 5 or below, the server prints
+      a census of objects loaded since the last commit or abort.
+      This can make it easier to understand patterns of cache misses.
+      
+    * Add dummy new_oid() and get_packer() methods to the Storage class
+      for documentation.
+          
+3.2: (2006-02-01): r27892
+
+    * Add 5 iteration methods to BTree.
+      __reversed__() for reverse iteration of keys.
+      items_backward() for reverse iteration of items.
+      items_from() for iterations starting at a given key.
+      items_backward_from() for reverse iterations from a given key.
+      items_range() for iterations of items with keys in a given range.
+
+    * Add __nonzero__ and setdefault methods to BTree
+
+    * Change the name of BTree's get_count method to __len__.
+
+    * Add setuptools support (when installed) to setup.py.
+
+    * Remove convert_zodb.py script, rather than fix/maintain it.
+
+3.1: (2005-10-18): r27556
+
+    * Add PersistentSet.  (Applications that use the persistent_set
+      must use Python versions >= 2.4).
+
+    * Add MemoryStorage, an in-memory storage for testing purposes.
+
+3.0: (2005-09-08): r27334
+
+    * Fix bug in utility function (touch_every_reference()) added in 3.0a.
+
+    * Replace ._p_changed = 1 to ._p_note_change() in btree.py.
+
+3.0a: (2005-08-09): r27118
+
+    * Revise packed record format to write records where the instance state is 
+      compressed using zlib.  This reduces the size of stored files and the
+      number of bytes of data transmitted during load/store operations.
+
+    * Add a FileStorage2 file format.  The new format does not need or store 
+      transaction identifiers.  It also includes a pre-built index of the 
+      object records written at the time of the last pack.  This results in
+      a faster start-up.  Conversion is not automatic, though.
+      A convert_file_storage.py is included with this release to make it simple
+      to convert a file to either format.
+
+    * Add stress testing client stress.py.
+
+    * When the state of a ghost can't be loaded because it has been
+      removed by a pack (from another connection), make the error be a
+      ReadConflictError instead of a DurusKeyError.
+
+    * Implement an incremental pack.  The storage server can now serve
+      clients while packing the database.
+
+    * Add gen_every_instance() utility to durus.connection.
+
+    * Add touch_every_reference() utility function to durus.connection.
+
+    * Remove the use of tids from Connection, ClientStorage, and
+      StorageServer.  The StorageServer now sends STATUS_INVALID for
+      requests to load object records that are known to be invalid for
+      that client.  Change Storage.load() so that the return value is
+      a tid-less object-record.  The client/server protocol also
+      changes to stop transmitting tids as part of the response for
+      sync and commit requests.  Storage.sync() now returns only a
+      list of oids.  Storage.end() now returns None.
+
+2.0 (2005-4-26) r26653:
+
+    * The only change is in the license.  The new license is the GPL-compatible
+      version of the CNRI Open Source License.
+
+1.5 (2005-3-07) r26296:
+
+    * A small change makes Persistent instances pickle-able.
+
+1.4 (2005-1-14) r25851:
+
+    * Revise serialize.py to avoid using cPickle.noload(), which can't handle
+      a dict subclass.
+
+    * Add a --startup option to the durus command line tool.
+
+1.3 (2004-12-10) r25746:
+
+    * Use 'b' in file modes.  
+      
+    * Continue to rename the open packed file on POSIX systems.
+
+    * Convert tests to sancho's new utest format.
+
+    * Improve test coverage for FileStorage.
+
+    * Lower the priority of Sync logging.
+    
+    * Show host and port when client fails to connect.
+
+1.2 (2004-09-08) r25044:
+
+    * Add durus command line tool.
+
+    * Add btree module.
+
+    * Update pack() so that it works on Windows and so that it gets a lock 
+      again after the pack is completed. 
+
+1.1 (2004-08-05) r24872:
+
+    * Provide a close() method for FileStorage.  Call appropriate win32
+      unlock function.
+
+    * Remember to lock the new file created by pack().  Unlock the
+      old file.
+
+
+1.0 (2004-07-31) r24846:
+
+    * Fix obscure bug in storage_server during logging.
+
+    * Repaired example in README.txt.
+
+    * Added FAQ.
+
+    * Made ProtocolError inherit from DurusError.
+
+    * Added fsync() after writing transaction data.
+
+
+0.1 (2004-07-27) r24791:
+
+    * Initial Release 
