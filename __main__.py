@@ -35,10 +35,11 @@ def configure_readline(namespace, history_path):
     except ImportError:
         pass
 
+
 def interactive_client(file, address, cache_size, readonly, repair,
                        startup):
     if file:
-        storage = FileStorage(file, readonly=readonly, repair=repair)
+        storage = get_storage(file, readonly, repair)
         description = file
     else:
         socket_address = SocketAddress.new(address)
@@ -116,11 +117,14 @@ def client_main():
 def get_storage(file, repair=False, readonly=False):
     if file:
         fp = open(file, 'rb')
-        d = fp.read(10)
+        d = fp.read(40)
         fp.close()
         if d.startswith('DFS20'):
             from durus.file_storage2 import FileStorage2
             return FileStorage2(file, repair=repair, readonly=readonly)
+        elif d.startswith('SQLite format '):
+            from durus.sqlite_storage import SqliteStorage
+            return SqliteStorage(file, repair=repair, readonly=readonly)
         return FileStorage(file, repair=repair, readonly=readonly)
     else:
         return TempFileStorage()
@@ -133,7 +137,7 @@ def start_durus(logfile, logginglevel, address, storage, gcbytes):
     direct_output(logfile)
     logger.setLevel(logginglevel)
     socket_address = SocketAddress.new(address)
-    if isinstance(storage, FileStorage):
+    if hasattr(storage, 'get_filename'):
         log(20, 'Storage file=%s address=%s',
             storage.get_filename(), socket_address)
     StorageServer(storage, address=socket_address, gcbytes=gcbytes).serve()
@@ -241,7 +245,7 @@ def pack_storage_main():
         wait_for_server(options.host, options.port)
         storage = ClientStorage(host=options.host, port=options.port)
     else:
-        storage = FileStorage(options.file)
+        storage = get_storage(options.file)
     connection = Connection(storage)
     connection.pack()
 
