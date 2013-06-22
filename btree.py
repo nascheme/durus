@@ -438,7 +438,7 @@ class BTree (PersistentObject):
         assert self, 'empty BTree has no max item'
         return self.root.get_max_item()
 
-    def __len__(self):
+    def get_count(self):
         """() -> int
         Compute and return the total number of items."""
         return self.root.get_count()
