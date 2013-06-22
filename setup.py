@@ -2,7 +2,7 @@
 $URL$
 $Id$
 """
-from __init__ import __version__
+from durus.__init__ import __version__
 import re, sys, os
 assert sys.version >= "2.4"
 
@@ -39,8 +39,7 @@ setup(name = "Durus",
       Serves and manages changes to persistent objects being used in
       multiple client processes. 
       """,
-      scripts = ["durus"],
-      package_dir = {'durus' : os.curdir},
+      scripts = ["scripts/durus"],
       packages = ["durus"],
       platforms = ['Python >=2.4'],
       author = "CNRI",
