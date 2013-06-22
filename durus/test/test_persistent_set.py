@@ -3,20 +3,20 @@ $URL$
 $Id$
 """
 from durus.persistent_set import PersistentSet
-from sancho.utest import UTest, raises
+from pytest import raises
+import pytest
 
-set_type = None
-other_type = None
 
-class SetTest (UTest):
+@pytest.mark.parametrize(
+    ('set_type', 'other_type'),
+    [(set, set),
+     (PersistentSet, set),
+     (PersistentSet, PersistentSet)
+    ]
+)
+class TestSet(object):
 
-    def __init__(self, the_type, the_other_type):
-        global set_type, other_type
-        set_type = the_type
-        other_type = the_other_type
-        UTest.__init__(self)
-
-    def test__and__(self):
+    def test__and__(self, set_type, other_type):
         s1 = set_type()
         s2 = other_type()
         assert set(s1 & s2) == set()
@@ -25,13 +25,13 @@ class SetTest (UTest):
         s1 = set_type(['j', 'k'])
         assert set(s1 & s2) == set(s2)
 
-    def test__contains__(self):
+    def test__contains__(self, set_type, other_type):
         s1 = set_type()
         s2 = other_type(['j'])
         assert s2.__contains__('j')
         assert 'j' in s2
 
-    def test__eq__(self):
+    def test__eq__(self, set_type, other_type):
         s1 = set_type()
         s2 = other_type()
         if set_type != other_type:
@@ -46,7 +46,7 @@ class SetTest (UTest):
         s2 = other_type(['j', 'k'])
         assert not (s1 == s2)
 
-    def test__ge__(self):
+    def test__ge__(self, set_type, other_type):
         s1 = set_type()
         s2 = other_type()
         if set_type != other_type:
@@ -64,7 +64,7 @@ class SetTest (UTest):
         assert not (s1 >= s2)
         assert s2 >= s1
 
-    def test__gt__(self):
+    def test__gt__(self, set_type, other_type):
         s1 = set_type()
         s2 = other_type()
         if set_type != other_type:
@@ -82,7 +82,7 @@ class SetTest (UTest):
         assert not (s1 > s2)
         assert s2 > s1
 
-    def test__iand__(self):
+    def test__iand__(self, set_type, other_type):
         s1 = set_type()
         s2 = other_type()
         assert s1.__iand__(s2) == set_type()
@@ -95,7 +95,7 @@ class SetTest (UTest):
         assert set(s1.__iand__(s2)) == set(s2)
         assert set(s1) == set(s2)
 
-    def test__ior__(self):
+    def test__ior__(self, set_type, other_type):
         s1 = set_type()
         s2 = other_type()
         assert s1.__ior__(s2) == set_type()
@@ -108,7 +108,7 @@ class SetTest (UTest):
         assert s1.__ior__(s3) == set_type(['j', 'k', 'g'])
         assert s1 == set_type(['j', 'k', 'g'])
 
-    def test__isub__(self):
+    def test__isub__(self, set_type, other_type):
         s1 = set_type()
         s2 = other_type()
         assert s1.__isub__(s2) == s1
@@ -121,13 +121,13 @@ class SetTest (UTest):
         assert s1.__isub__(s2) == s3
         assert s1 == s3
 
-    def test__iter__(self):
+    def test__iter__(self, set_type, other_type):
         s1 = set_type()
         assert set_type(list(s1)) == s1
         s1 = set_type('abc')
         assert set_type(list(s1)) == s1
 
-    def test__ixor__(self):
+    def test__ixor__(self, set_type, other_type):
         s1 = set_type('abc')
         s2 = other_type('cfg')
         s1.__ixor__(s2)
@@ -139,7 +139,7 @@ class SetTest (UTest):
         s1 ^= set_type()
         assert s1 == set_type('abfg')
 
-    def test__le__(self):
+    def test__le__(self, set_type, other_type):
         s1 = set_type()
         s2 = other_type()
         if set_type != other_type:
@@ -156,7 +156,7 @@ class SetTest (UTest):
         assert not (s2 <= s1)
         assert s1 <= s2
 
-    def test_len(self):
+    def test_len(self, set_type, other_type):
         s = set_type()
         assert len(s) == 0
         s = set_type([])
@@ -164,7 +164,7 @@ class SetTest (UTest):
         s = set_type(['a'])
         assert len(s) == 1
 
-    def test__lt__(self):
+    def test__lt__(self, set_type, other_type):
         s1 = set_type()
         s2 = other_type()
         if set_type != other_type:
@@ -181,7 +181,7 @@ class SetTest (UTest):
         assert s1 < s2
 
 
-    def test__ne__(self):
+    def test__ne__(self, set_type, other_type):
         s1 = set_type()
         s2 = other_type()
         if set_type != other_type:
@@ -193,7 +193,7 @@ class SetTest (UTest):
         assert s3 != s1
         assert s1 != s3
 
-    def test__or__(self):
+    def test__or__(self, set_type, other_type):
         s1 = set_type()
         s2 = other_type()
         assert s1 | s2 == set_type()
@@ -202,7 +202,7 @@ class SetTest (UTest):
         s4 = set_type('bc')
         assert s3 | s4 == set_type('abc')
 
-    def test__ror__(self):
+    def test__ror__(self, set_type, other_type):
         s1 = set_type()
         s2 = other_type()
         assert s1.__ror__(s2) == set_type()
@@ -211,7 +211,7 @@ class SetTest (UTest):
         s4 = set_type('bc')
         assert s3.__ror__(s4) == set_type('abc')
 
-    def test__rand__(self):
+    def test__rand__(self, set_type, other_type):
         s1 = set_type()
         s2 = other_type()
         assert s1.__rand__(s2) == set_type()
@@ -220,7 +220,7 @@ class SetTest (UTest):
         s4 = set_type('bc')
         assert s3.__rand__(s4) == set_type('b')
 
-    def test__rsub__(self):
+    def test__rsub__(self, set_type, other_type):
         s1 = set_type()
         s2 = other_type()
         assert s1.__rsub__(s2) == set_type()
@@ -230,7 +230,7 @@ class SetTest (UTest):
         s4 = set_type('bc')
         assert s3.__rsub__(s4) == set_type('c')
 
-    def test__rxor__(self):
+    def test__rxor__(self, set_type, other_type):
         s1 = set_type()
         s2 = other_type()
         assert s1.__rxor__(s2) == set_type()
@@ -240,7 +240,7 @@ class SetTest (UTest):
         s4 = set_type('bc')
         assert s3.__rxor__(s4) == set_type('ac')
 
-    def test__sub__(self):
+    def test__sub__(self, set_type, other_type):
         s1 = set_type()
         s2 = other_type()
         assert s1 - s2 == set_type()
@@ -250,7 +250,7 @@ class SetTest (UTest):
         s4 = set_type('bc')
         assert s4 - s3 == set_type('c')
 
-    def test__xor__(self):
+    def test__xor__(self, set_type, other_type):
         s1 = set_type()
         s2 = other_type()
         assert s1 ^ s2 == set_type()
@@ -260,7 +260,7 @@ class SetTest (UTest):
         s4 = set_type('bc')
         assert s3 ^ s4 == set_type('ac')
 
-    def test_add(self):
+    def test_add(self, set_type, other_type):
         s1 = set_type()
         s1.add(1)
         assert s1 == set_type([1])
@@ -269,7 +269,7 @@ class SetTest (UTest):
         s1.add(2)
         assert s1 == set_type([1, 2])
 
-    def test_clear(self):
+    def test_clear(self, set_type, other_type):
         s1 = set_type()
         s1.clear()
         assert s1 == set_type()
@@ -277,7 +277,7 @@ class SetTest (UTest):
         s1.clear()
         assert s1 == set_type()
 
-    def test_copy(self):
+    def test_copy(self, set_type, other_type):
         s1 = set_type()
         s2 = s1.copy()
         assert s1 is not s2
@@ -289,7 +289,7 @@ class SetTest (UTest):
         assert s1 == s2
         assert type(s1) is type(s2)
 
-    def test_discard(self):
+    def test_discard(self, set_type, other_type):
         s1 = set_type()
         s1.discard(1)
         assert s1 == set_type()
@@ -298,7 +298,7 @@ class SetTest (UTest):
         s1.discard('a')
         assert s1 == set_type('sdf')
 
-    def test_pop(self):
+    def test_pop(self, set_type, other_type):
         raises(KeyError, set_type().pop)
         s1 = set_type('asdf')
         x = s1.pop()
@@ -306,16 +306,11 @@ class SetTest (UTest):
         assert len(s1) == 3
         assert (s1 | set_type(x)) == set_type('asdf')
 
-    def test_remove(self):
+    def test_remove(self, set_type, other_type):
         s1 = set_type()
         raises(KeyError, s1.remove, 1)
         assert s1 == set_type()
         s1 = set_type('asdf')
         s1.remove('a')
         assert s1 == set_type('sdf')
-
-if __name__ == "__main__":
-    SetTest(set, set)
-    SetTest(PersistentSet, set)
-    SetTest(PersistentSet, PersistentSet)
 
