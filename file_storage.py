@@ -3,6 +3,7 @@ $URL: svn+ssh://svn.mems-exchange.org/repos/trunk/durus/file_storage.py $
 $Id: file_storage.py 31606 2009-04-30 10:29:03Z dbinger $
 """
 from datetime import datetime
+from durus.error import DurusKeyError
 from durus.file import File
 from durus.logger import log, is_logging
 from durus.serialize import unpack_record, split_oids
@@ -60,7 +61,7 @@ class FileStorage (Storage):
         """(str) -> str"""
         result = self.shelf.get_value(oid)
         if result is None:
-            raise KeyError(oid)
+            raise DurusKeyError(oid)
         return result
 
     def begin(self):
@@ -94,13 +95,14 @@ class FileStorage (Storage):
         self.invalid.clear()
         return result
 
-    def gen_oid_record(self, start_oid=None, **other):
+    def gen_oid_record(self, start_oid=None, seen=None, **other):
         if start_oid is None:
             for item in iteritems(self.shelf):
                 yield item
         else:
             todo = [start_oid]
-            seen = IntSet() # This eventually contains them all.
+            if seen is None:
+                seen = IntSet() # This eventually contains them all.
             while todo:
                 oid = todo.pop()
                 if str_to_int8(oid) in seen:
@@ -135,7 +137,8 @@ class FileStorage (Storage):
         assert file.tell() == 0
         def packer():
             yield "started %s" % datetime.now()
-            items = self.gen_oid_record(start_oid=int8_to_str(0))
+            seen = IntSet()
+            items = self.gen_oid_record(start_oid=int8_to_str(0), seen=seen)
             for step in Shelf.generate_shelf(file, items):
                 yield step
             file.flush()
@@ -150,8 +153,10 @@ class FileStorage (Storage):
                     assert shelf.get_position(oid) is None
                     self.invalid.add(oid)
             yield "invalidations identified %s" % datetime.now()
-            shelf.store(
-                (name, self.shelf.get_value(name)) for name in self.pack_extra)
+            for oid in self.pack_extra:
+                seen.discard(str_to_int8(oid))
+            for oid in self.pack_extra:
+                shelf.store(self.gen_oid_record(start_oid=oid, seen=seen))
             file.flush()
             file.fsync()
             if not self.shelf.get_file().is_temporary():
