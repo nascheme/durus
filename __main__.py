@@ -13,7 +13,6 @@ from durus.storage_server import SocketAddress
 from durus.storage_server import StorageServer, wait_for_server
 from durus.utils import int8_to_str, str_to_int8, write
 from optparse import OptionParser
-from optparse import OptionParser
 from pprint import pprint
 from time import sleep
 from types import ModuleType
