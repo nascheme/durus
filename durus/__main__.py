@@ -62,7 +62,11 @@ def interactive_client(file, address, cache_size, readonly, repair,
         vars(console_module), os.path.expanduser("~/.durushistory"))
     console = InteractiveConsole(vars(console_module))
     if startup:
-        console.runsource('execfile("%s")' % os.path.expanduser(startup))
+        src = '''with open('{fn}', 'rb') as _:
+                     _ = compile(_.read(), '{fn}', 'exec')
+                     exec(globals().pop('_'))
+        '''.format(fn = os.path.expanduser(startup)).rstrip()
+        console.runsource(src, '-stub-', 'exec')
     help = ('    connection -> the Connection\n'
             '    root       -> the root instance')
     console.interact('Durus %s\n%s' % (description, help))
