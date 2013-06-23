@@ -5,6 +5,7 @@ $Id$
 from durus.connection import Connection
 from durus.file import File
 from durus.file_storage import TempFileStorage, FileStorage
+from durus.error import ReadConflictError
 from durus.logger import direct_output
 from durus.persistent import Persistent
 from durus.serialize import pack_record
@@ -130,11 +131,15 @@ class TestShelfStorageTest(object):
         del r['a7']
         del r['a8']
         c.commit()
+        gone = c.get(deleted_oids[0])
         c.pack()
         c.abort()
         assert c.get(deleted_oids[0])._p_is_ghost()
         assert c.get(deleted_oids[1])._p_is_ghost()
-        raises(KeyError, getattr, c.get(deleted_oids[0]), 'a')
+        gone = c.get(deleted_oids[0])
+        # this is no longer a KeyError because of improved packing
+        with raises(ReadConflictError):
+            getattr(gone, 'a')
         assert len([repr(oid) for oid, record in s.gen_oid_record()]) == 7
         c.commit()
         c.pack()

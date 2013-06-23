@@ -487,7 +487,7 @@ class BTree (PersistentObject):
         """(key, closed=False) -> generator
         If closed is true, generate in reverse order all items with keys
         less than or equal to the given key.
-        If closed is true, generate in reverse order all items with keys
+        If closed is false, generate in reverse order all items with keys
         less than the given key.
         """
         if closed:
