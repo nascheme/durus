@@ -47,25 +47,37 @@ class PersistentDict (PersistentObject):
         result.data = self.data.copy()
         return result
 
-    def keys(self):
-        return list(self.data.keys())
+    if hasattr({}, 'iterkeys'):
+        # python 2.x
+        def keys(self):
+            return list(self.data.keys())
 
-    def items(self):
-        return list(self.data.items())
+        def items(self):
+            return list(self.data.items())
 
-    def iteritems(self):
-        return iteritems(self.data)
+        def iteritems(self):
+            return iteritems(self.data)
 
-    def iterkeys(self):
-        for k, v in self.iteritems():
-            yield k
+        def iterkeys(self):
+            for k, v in self.iteritems():
+                yield k
 
-    def itervalues(self):
-        for k, v in self.iteritems():
-            yield v
+        def itervalues(self):
+            for k, v in self.iteritems():
+                yield v
 
-    def values(self):
-        return list(self.data.values())
+        def values(self):
+            return list(self.data.values())
+    else:
+        # python 3.x
+        def keys(self):
+            return self.data.keys()
+
+        def values(self):
+            return self.data.values()
+
+        def items(self):
+            return self.data.items()
 
     def has_key(self, key):
         return key in self.data

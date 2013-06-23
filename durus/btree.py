@@ -109,12 +109,12 @@ class BNode (PersistentObject):
             if child.is_full():
                 self.split_child(position, child)
                 if key == self.items[position][0]:
-                     self.items[position] = item
-                     self._p_note_change()
+                    self.items[position] = item
+                    self._p_note_change()
                 else:
-                     if key > self.items[position][0]:
-                         position += 1
-                     self.nodes[position].insert_item(item)
+                    if key > self.items[position][0]:
+                        position += 1
+                    self.nodes[position].insert_item(item)
             else:
                 self.nodes[position].insert_item(item)
 
@@ -332,30 +332,52 @@ class BTree (PersistentObject):
 
     __bool__ = __nonzero__
 
-    def iteritems(self):
-        for item in self.root:
-            yield item
+    if hasattr({}, 'iteritems'):
+        # python 2.x
 
-    def iterkeys(self):
-        for item in self.root:
-            yield item[0]
+        def iteritems(self):
+            for item in self.root:
+                yield item
 
-    def itervalues(self):
-        for item in self.root:
-            yield item[1]
+        def iterkeys(self):
+            for item in self.root:
+                yield item[0]
 
-    def items(self):
-        return list(self.iteritems())
+        def itervalues(self):
+            for item in self.root:
+                yield item[1]
 
-    def keys(self):
-        return list(self.iterkeys())
+        def items(self):
+            return list(self.iteritems())
 
-    def values(self):
-        return list(self.itervalues())
+        def keys(self):
+            return list(self.iterkeys())
 
-    def __iter__(self):
-        for key in self.iterkeys():
-            yield key
+        def values(self):
+            return list(self.itervalues())
+
+        def __iter__(self):
+            for key in self.iterkeys():
+                yield key
+
+    else:
+        # python 3.x
+
+        def items(self):
+            for item in self.root:
+                yield item
+
+        def keys(self):
+            for item in self.root:
+                yield item[0]
+
+        def values(self):
+            for item in self.root:
+                yield item[1]
+
+        def __iter__(self):
+            for key in self.keys():
+                yield key
 
     def __reversed__(self):
         for item in reversed(self.root):

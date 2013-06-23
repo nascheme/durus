@@ -110,11 +110,15 @@ class TestCoverage(object):
         bt = BTree()
         for j in range(100):
             bt.add(j)
-        assert list(bt) == list(bt.iterkeys())
-        assert list(bt.iteritems()) == list(zip(bt, bt.itervalues()))
-        assert list(bt.iterkeys()) == list(bt.keys())
-        assert list(bt.itervalues()) == list(bt.values())
-        assert list(bt.iteritems()) == list(bt.items())
+        if hasattr(bt, 'iterkeys'):
+            assert list(bt) == list(bt.iterkeys())
+            assert list(bt.iteritems()) == list(zip(bt, bt.itervalues()))
+            assert list(bt.iterkeys()) == list(bt.keys())
+            assert list(bt.itervalues()) == list(bt.values())
+            assert list(bt.iteritems()) == list(bt.items())
+        else:
+            assert list(bt) == list(bt.keys())
+            assert list(bt.items()) == list(zip(bt, bt.values()))
 
     def test_reversed(self):
         bt = BTree()
@@ -126,7 +130,7 @@ class TestCoverage(object):
         bt = BTree()
         for j in range(100):
             bt.add(j)
-        assert list(reversed(bt.items())) == list(bt.items_backward())
+        assert list(reversed(list(bt.items()))) == list(bt.items_backward())
 
     def test_items_from(self):
         bt = BTree()
@@ -247,7 +251,7 @@ class TestCoverage(object):
         assert bt.has_key(2)
         bt.clear()
         assert not bt.has_key(2)
-        assert bt.keys() == []
+        assert list(bt.keys()) == []
 
     def test_update(self):
         bt = BTree()

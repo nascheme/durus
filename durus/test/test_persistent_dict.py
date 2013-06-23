@@ -117,7 +117,10 @@ class TestPersistentDict(object):
 
     def test_iter(self):
         pd = PersistentDict((x, True) for x in range(10))
-        assert list(pd.iteritems()) == list(zip(pd.iterkeys(), pd.itervalues()))
+        if hasattr({}, 'iteritems'):
+            assert list(pd.iteritems()) == list(zip(pd.iterkeys(), pd.itervalues()))
+        else:
+            assert list(pd.items()) == list(zip(pd.keys(), pd.values()))
         assert list(pd.items()) == list(zip(pd.keys(), pd.values()))
 
     def test_pops(self):
