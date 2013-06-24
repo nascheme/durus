@@ -2,7 +2,7 @@ Durus Installation
 
 * Requirements:
 
-Durus requires Python version 2.4 or above.
+Durus requires Python version 2.6 or above.
 Python distributions are available at http://www.python.org.
 If you need to run Durus on Windows NT/2000, you will need
 python with the win32 extensions, available at
@@ -16,9 +16,9 @@ faster.  You will need a C compiler to build the extension.
 Go to http://www.mems-exchange.org/software/durus and download the
 latest version.
 Untar the tarball with a command like this:
-    tar zvxf Durus-3.9.tar.gz
+    tar zvxf Durus-3.9.1.tar.gz
 Move into the Durus source directory:
-    cd Durus-3.9
+    cd Durus-3.9.1
 Here is the standard installation command, with the additional option
 that creates a "durus.installed" file containing the list of installed
 files.
@@ -32,7 +32,7 @@ installation.
 
 Review the installed.txt file to see where the install script made
 changes.  You should make sure that the script files installed to the python
-bin directory are on your command shell's path.  
+bin directory are on your command shell's path.
 
 
 * Customized Installation:
