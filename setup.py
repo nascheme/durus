@@ -28,7 +28,7 @@ if 'sdist' in sys.argv:
     year = datetime.now().year
     copyright = \
         "Copyright (c) Corporation for National Research Initiatives %s" % year
-    assert open("__init__.py").read().count(copyright) == 1
+    assert open("durus/__init__.py").read().count(copyright) == 1
     assert open("README.txt").read().count(copyright) == 1
 
 persistent = Extension(name="durus._persistent", sources=["_persistent.c"])
