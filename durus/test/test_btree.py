@@ -13,8 +13,10 @@ class TestCoverage(object):
 
     def test_no_arbitrary_attributes(self):
         bt = BTree()
-        raises(AttributeError, setattr, bt, 'bogus', 1)
-        raises(AttributeError, setattr, bt.root, 'bogus', 1)
+        with raises(AttributeError):
+            setattr(bt, 'bogus', 1)
+        with raises(AttributeError):
+            setattr(bt.root, 'bogus', 1)
 
     def test_delete_case_1(self):
         bt = BTree()
