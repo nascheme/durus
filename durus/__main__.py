@@ -12,7 +12,12 @@ from durus.storage_server import DEFAULT_PORT, DEFAULT_HOST, DEFAULT_GCBYTES
 from durus.storage_server import SocketAddress
 from durus.storage_server import StorageServer, wait_for_server
 from durus.utils import int8_to_str, str_to_int8, write
-from argparse import ArgumentParser
+try:
+    from argparse import ArgumentParser
+except ImportError:
+    print('please install argparse, i.e.:')
+    print('$ pip install argparse')
+    raise SystemExit
 from pprint import pprint
 from time import sleep
 from types import ModuleType
@@ -243,11 +248,11 @@ def pack_storage_main():
 
 def usage():
     sys.stdout.write(
-        'durus [ -c | -s | -p ] [ -h|--help ] [<specific options>]\n'
+        'durus [ -c | -s | -p ] [ -h|--help(*) ] [<specific options>]\n'
         '    -s | server  Start or stop a Durus storage server.\n'
         '    -c | client  Start a low-level interactive client.\n'
         '    -p | pack    Pack a storage file.\n'
-        'add --help for help on specific options.\n')
+        '(*) add --help for help on specific options.\n')
 
 def main():
     if len(sys.argv) == 1:
