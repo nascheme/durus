@@ -10,13 +10,14 @@ class BNode (PersistentObject):
       items: list
       nodes: [BNode]
     """
-    __slots__ = ['items', 'nodes']
+    __slots__ = ['items', 'nodes', '_p_len']
 
     minimum_degree = 2 # a.k.a. t
 
     def __init__(self):
         self.items = []
         self.nodes = None
+        self._p_len = None
 
     def is_leaf(self):
         return self.nodes is None
@@ -117,6 +118,7 @@ class BNode (PersistentObject):
                     self.nodes[position].insert_item(item)
             else:
                 self.nodes[position].insert_item(item)
+                self._p_note_change()
 
     def split_child(self, position, child):
         """(position:int, child:BNode)
@@ -237,10 +239,10 @@ class BNode (PersistentObject):
                             node.nodes = node.nodes + upper_sibling.nodes
                         del self.items[p]
                         del self.nodes[p+1]
-                    self._p_note_change()
                     node._p_note_change()
                 assert is_big(node)
                 node.delete(key)
+                self._p_note_change()
             if not self.items:
                 # This can happen when self is the root node.
                 self.items = self.nodes[0].items
@@ -252,8 +254,23 @@ class BNode (PersistentObject):
         """
         result = len(self.items)
         for node in self.nodes or []:
-            result += node.get_count()
+            result += len(node)
         return result
+
+    def __len__(self):
+        """() -> int
+        This is a cached version of get_count
+        """
+        if self._p_len is None:
+            self._p_len = self.get_count()
+        return self._p_len
+
+    def _p_note_change(self):
+        from persistent import UNSAVED
+        self._p_len = None
+        if self._p_status != UNSAVED:
+            self._p_set_status_unsaved()
+            self._p_connection.note_change(self)
 
     def get_node_count(self):
         """() -> int
@@ -460,10 +477,10 @@ class BTree (PersistentObject):
         assert self, 'empty BTree has no max item'
         return self.root.get_max_item()
 
-    def get_count(self):
+    def __len__(self):
         """() -> int
         Compute and return the total number of items."""
-        return self.root.get_count()
+        return len(self.root)
 
     def items_backward(self):
         """() -> generator
