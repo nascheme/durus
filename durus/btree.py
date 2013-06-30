@@ -2,7 +2,12 @@
 $URL$
 $Id$
 """
-from durus.persistent import PersistentObject
+from durus.persistent import PersistentObject, UNSAVED
+import itertools
+
+CACHE_LEN = not True
+
+seldom = itertools.cycle(range(1000)).__next__
 
 class BNode (PersistentObject):
     """
@@ -10,14 +15,22 @@ class BNode (PersistentObject):
       items: list
       nodes: [BNode]
     """
-    __slots__ = ['items', 'nodes', '_p_len']
-
     minimum_degree = 2 # a.k.a. t
 
-    def __init__(self):
-        self.items = []
-        self.nodes = None
-        self._p_len = None
+    if CACHE_LEN:
+        __slots__ = ['items', 'nodes', '_p_len']
+
+        def __init__(self):
+            self.items = []
+            self.nodes = None
+            self._p_len = None
+
+    else:
+        __slots__ = ['items', 'nodes']
+
+        def __init__(self):
+            self.items = []
+            self.nodes = None
 
     def is_leaf(self):
         return self.nodes is None
@@ -119,6 +132,11 @@ class BNode (PersistentObject):
             else:
                 self.nodes[position].insert_item(item)
                 self._p_note_change()
+        if CACHE_LEN:
+            if seldom():
+                self._p_note_change()
+            else:
+                self._update_len()
 
     def split_child(self, position, child):
         """(position:int, child:BNode)
@@ -239,14 +257,19 @@ class BNode (PersistentObject):
                             node.nodes = node.nodes + upper_sibling.nodes
                         del self.items[p]
                         del self.nodes[p+1]
+                    self._p_note_change()
                     node._p_note_change()
                 assert is_big(node)
                 node.delete(key)
-                self._p_note_change()
             if not self.items:
                 # This can happen when self is the root node.
                 self.items = self.nodes[0].items
                 self.nodes = self.nodes[0].nodes
+        if CACHE_LEN:
+            if seldom():
+                self._p_note_change()
+            else:
+                self._update_len()
 
     def get_count(self):
         """() -> int
@@ -254,23 +277,34 @@ class BNode (PersistentObject):
         """
         result = len(self.items)
         for node in self.nodes or []:
-            result += len(node)
+            result += node.get_count()
         return result
 
-    def __len__(self):
-        """() -> int
-        This is a cached version of get_count
-        """
-        if self._p_len is None:
-            self._p_len = self.get_count()
-        return self._p_len
+    if CACHE_LEN:
+        def _update_len(self):
+            """() -> int
+            How many items are stored in this node and descendants?
+            This version uses caching
+            """
+            result = len(self.items)
+            for node in self.nodes or []:
+                result += len(node)
+            self._p_note_change(result)
+            return result
 
-    def _p_note_change(self):
-        from persistent import UNSAVED
-        self._p_len = None
-        if self._p_status != UNSAVED:
-            self._p_set_status_unsaved()
-            self._p_connection.note_change(self)
+        def __len__(self):
+            """() -> int
+            This is a cached version of get_count
+            """
+            if self._p_len is None:
+                return self._update_len()
+            return self._p_len
+
+        def _p_note_change(self, result=None):
+            self._p_len = result
+            if self._p_status != UNSAVED:
+                self._p_set_status_unsaved()
+                self._p_connection.note_change(self)
 
     def get_node_count(self):
         """() -> int
@@ -477,10 +511,16 @@ class BTree (PersistentObject):
         assert self, 'empty BTree has no max item'
         return self.root.get_max_item()
 
-    def __len__(self):
-        """() -> int
-        Compute and return the total number of items."""
-        return len(self.root)
+    if CACHE_LEN:
+        def __len__(self):
+            """() -> int
+            Compute and return the total number of items (fast O(1) version)."""
+            return len(self.root)
+    else:
+        def __len__(self):
+            """() -> int
+            Compute and return the total number of items (fast O(1) version)."""
+            return self.root.get_count()
 
     def items_backward(self):
         """() -> generator

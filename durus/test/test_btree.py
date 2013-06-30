@@ -5,7 +5,8 @@ $Id$
 from durus.btree import BTree, BNode
 from durus.connection import Connection
 from durus.storage import MemoryStorage
-from random import randint
+from random import randint, seed
+from copy import deepcopy
 from pytest import raises, skip
 import sys
 
@@ -304,14 +305,16 @@ class TestCoverage(object):
         assert bt.get_node_count() == 34, bt.get_node_count()
 
 DEBUG = False
+SAME_RANDOM = True
 
 class TestSlow(object):
 
     def test_slow(self):
         if '--slow' not in sys.argv:
             skip('test not run because it is slow')
-        if DEBUG:
-            from copy import deepcopy
+
+        if SAME_RANDOM:
+            seed(42)
 
         for bnode_class in BNode.__subclasses__():
             if bnode_class.minimum_degree not in (4, 16):
@@ -332,7 +335,7 @@ class TestSlow(object):
                         del bt[number]
                         del d[number]
                         op = 'del'
-                        sys.stdout.write('\ndel bt[%s]' % number)
+                        #sys.stdout.write('\ndel bt[%s]' % number)
                 else:
                     bt[number] = 1
                     d[number] = 1
