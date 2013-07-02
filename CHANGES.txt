@@ -1,3 +1,20 @@
+3.9.3: (2013-07-01)
+
+Optionally support zodbpickle when it is installed. This gives python2 compatibility.
+
+Fix an old bug where _persistent.so differes from persistent.py .
+
+Rework len support to efficiently calculate len on every delete or insert.
+The time penalty is about 6 percent.
+
+3.9.2: (2013-06-30)
+
+Update:
+Support of len() is revived. The option is configurable at import time
+by changing the variable 
+__len__ exists again as a configurable option. The code becomes 20 % slower
+but calling __len__ is no longer a problem.
+
 3.9.1: (2013-06-24)
 
 Adapt a patch from David Binger that improves packing.

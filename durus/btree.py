@@ -95,7 +95,7 @@ class BNode (PersistentObject):
         else:
             return self.nodes[position].search(key)
 
-    def insert_item(self, item):
+    def _insert_item(self, item):
         """(item:(key:anything, value:anything))
         """
         assert not self.is_full()
@@ -103,13 +103,9 @@ class BNode (PersistentObject):
         position = self.get_position(key)
         if position < len(self.items) and self.items[position][0] == key:
             self.items[position] = item
-            if CACHE_LEN:
-                delta = 0
             self._p_note_change()
         elif self.is_leaf():
             self.items.insert(position, item)
-            if CACHE_LEN:
-                delta = 1
             self._p_note_change()
         else:
             child = self.nodes[position]
@@ -117,19 +113,42 @@ class BNode (PersistentObject):
                 self.split_child(position, child)
                 if key == self.items[position][0]:
                     self.items[position] = item
-                    if CACHE_LEN:
-                        delta = 0
                     self._p_note_change()
+                else:
+                    if key > self.items[position][0]:
+                        position += 1
+                    self.nodes[position].insert_item(item)
+            else:
+                self.nodes[position].insert_item(item)
+                self._p_note_change()
+
+    def _insert_item_len(self, item):
+        """(item:(key:anything, value:anything))
+        """
+        assert not self.is_full()
+        key = item[0]
+        position = self.get_position(key)
+        if position < len(self.items) and self.items[position][0] == key:
+            self.items[position] = item
+            delta = 0
+        elif self.is_leaf():
+            self.items.insert(position, item)
+            delta = 1
+        else:
+            child = self.nodes[position]
+            if child.is_full():
+                self.split_child(position, child)
+                if key == self.items[position][0]:
+                    self.items[position] = item
+                    delta = 0
                 else:
                     if key > self.items[position][0]:
                         position += 1
                     delta = self.nodes[position].insert_item(item)
             else:
                 delta = self.nodes[position].insert_item(item)
-                self._p_note_change()
-        if CACHE_LEN:
-            self._len += delta
-            return delta
+        self._len += delta
+        return delta
 
     def split_child(self, position, child):
         """(position:int, child:BNode)
@@ -173,7 +192,7 @@ class BNode (PersistentObject):
         else:
             return self.nodes[-1].get_max_item()
 
-    def delete(self, key):
+    def _delete(self, key):
         """(key:anything)
         Delete the item with this key.
         This is intended to follow the description in 19.3 of
@@ -201,15 +220,11 @@ class BNode (PersistentObject):
                     # Case 2a.
                     extreme = node.get_max_item()
                     node.delete(extreme[0])
-                    if CACHE_LEN:
-                        node._len -= 1
                     self.items[p] = extreme
                 elif is_big(upper_sibling):
                     # Case 2b.
                     extreme = upper_sibling.get_min_item()
                     upper_sibling.delete(extreme[0])
-                    if CACHE_LEN:
-                        upper_sibling._len -= 1
                     self.items[p] = extreme
                 else:
                     # Case 2c.
@@ -220,8 +235,6 @@ class BNode (PersistentObject):
                         node.nodes = node.nodes + upper_sibling.nodes
                     del self.items[p]
                     del self.nodes[p + 1]
-                    if CACHE_LEN:
-                        node._update_len()
                 self._p_note_change()
             else:
                 if not is_big(node):
@@ -230,28 +243,18 @@ class BNode (PersistentObject):
                         node.items.insert(0, self.items[p - 1])
                         self.items[p - 1] = lower_sibling.items[-1]
                         del lower_sibling.items[-1]
-                        if CACHE_LEN:
-                            lower_sibling._len -= 1
                         if not node.is_leaf():
                             node.nodes.insert(0, lower_sibling.nodes[-1])
                             del lower_sibling.nodes[-1]
-                            if CACHE_LEN:
-                                node._len += node.nodes[0]._len
-                                lower_sibling._len -= node.nodes[0]._len
                         lower_sibling._p_note_change()
                     elif is_big(upper_sibling):
                         # Case 3a2: Shift an item from upper_sibling.
                         node.items.append(self.items[p])
                         self.items[p] = upper_sibling.items[0]
                         del upper_sibling.items[0]
-                        if CACHE_LEN:
-                            node._len += 1
                         if not node.is_leaf():
                             node.nodes.append(upper_sibling.nodes[0])
                             del upper_sibling.nodes[0]
-                            if CACHE_LEN:
-                                node._len += node.nodes[-1]._len
-                                upper_sibling._len -= node.nodes[-1]._len
                         upper_sibling._p_note_change()
                     elif lower_sibling:
                         # Case 3b1: Merge with lower_sibling
@@ -261,8 +264,6 @@ class BNode (PersistentObject):
                             node.nodes = lower_sibling.nodes + node.nodes
                         del self.items[p-1]
                         del self.nodes[p-1]
-                        if CACHE_LEN:
-                            node._len += lower_sibling._len - 1
                     else:
                         # Case 3b2: Merge with upper_sibling
                         node.items = (node.items + [self.items[p]] +
@@ -271,8 +272,6 @@ class BNode (PersistentObject):
                             node.nodes = node.nodes + upper_sibling.nodes
                         del self.items[p]
                         del self.nodes[p+1]
-                        if CACHE_LEN:
-                            node._len += upper_sibling._len - 1
                     self._p_note_change()
                     node._p_note_change()
                 assert is_big(node)
@@ -281,8 +280,103 @@ class BNode (PersistentObject):
                 # This can happen when self is the root node.
                 self.items = self.nodes[0].items
                 self.nodes = self.nodes[0].nodes
-        if CACHE_LEN:
-            self._len -= 1
+
+    def _delete_len(self, key):
+        """(key:anything)
+        Delete the item with this key.
+        This is intended to follow the description in 19.3 of
+        'Introduction to Algorithms' by Cormen, Lieserson, and Rivest.
+        """
+        def is_big(node):
+            # Precondition for recursively calling node.delete(key).
+            return node and len(node.items) >= node.minimum_degree
+        p = self.get_position(key)
+        matches = p < len(self.items) and self.items[p][0] == key
+        if self.is_leaf():
+            if matches:
+                # Case 1.
+                del self.items[p]
+            else:
+                raise KeyError(key)
+        else:
+            node = self.nodes[p]
+            lower_sibling = p > 0 and self.nodes[p - 1]
+            upper_sibling = p < len(self.nodes) - 1 and self.nodes[p + 1]
+            if matches:
+                # Case 2.
+                if is_big(node):
+                    # Case 2a.
+                    extreme = node.get_max_item()
+                    node.delete(extreme[0])
+                    node._len -= 1
+                    self.items[p] = extreme
+                elif is_big(upper_sibling):
+                    # Case 2b.
+                    extreme = upper_sibling.get_min_item()
+                    upper_sibling.delete(extreme[0])
+                    upper_sibling._len -= 1
+                    self.items[p] = extreme
+                else:
+                    # Case 2c.
+                    extreme = upper_sibling.get_min_item()
+                    upper_sibling.delete(extreme[0])
+                    node.items = node.items + [extreme] + upper_sibling.items
+                    if not node.is_leaf():
+                        node.nodes = node.nodes + upper_sibling.nodes
+                    del self.items[p]
+                    del self.nodes[p + 1]
+                    node._update_len()
+            else:
+                if not is_big(node):
+                    if is_big(lower_sibling):
+                        # Case 3a1: Shift an item from lower_sibling.
+                        node.items.insert(0, self.items[p - 1])
+                        self.items[p - 1] = lower_sibling.items[-1]
+                        del lower_sibling.items[-1]
+                        lower_sibling._len -= 1
+                        if not node.is_leaf():
+                            node.nodes.insert(0, lower_sibling.nodes[-1])
+                            del lower_sibling.nodes[-1]
+                            movelen = node.nodes[0]._len
+                            node._len += movelen
+                            lower_sibling._len -= movelen
+                    elif is_big(upper_sibling):
+                        # Case 3a2: Shift an item from upper_sibling.
+                        node.items.append(self.items[p])
+                        self.items[p] = upper_sibling.items[0]
+                        del upper_sibling.items[0]
+                        node._len += 1
+                        if not node.is_leaf():
+                            node.nodes.append(upper_sibling.nodes[0])
+                            del upper_sibling.nodes[0]
+                            movelen = node.nodes[-1]._len
+                            node._len += movelen
+                            upper_sibling._len -= movelen
+                    elif lower_sibling:
+                        # Case 3b1: Merge with lower_sibling
+                        node.items = (lower_sibling.items + [self.items[p-1]] +
+                                      node.items)
+                        if not node.is_leaf():
+                            node.nodes = lower_sibling.nodes + node.nodes
+                        del self.items[p-1]
+                        del self.nodes[p-1]
+                        node._len += lower_sibling._len - 1
+                    else:
+                        # Case 3b2: Merge with upper_sibling
+                        node.items = (node.items + [self.items[p]] +
+                                      upper_sibling.items)
+                        if not node.is_leaf():
+                            node.nodes = node.nodes + upper_sibling.nodes
+                        del self.items[p]
+                        del self.nodes[p+1]
+                        node._len += upper_sibling._len - 1
+                assert is_big(node)
+                node.delete(key)
+            if not self.items:
+                # This can happen when self is the root node.
+                self.items = self.nodes[0].items
+                self.nodes = self.nodes[0].nodes
+        self._len -= 1
 
     def get_count(self):
         """() -> int
@@ -295,18 +389,19 @@ class BNode (PersistentObject):
 
     if CACHE_LEN:
 
-        def __xlen__(self):
-            """() -> int
-            This is a cached version of get_count
-            """
-            return self._len
-
         def _update_len(self):
             """recalculate len for one node"""
             result = len(self.items)
             for node in self.nodes or []:
                 result += node._len
             self._len = result
+
+        insert_item = _insert_item_len
+        delete = _delete_len
+
+    else:
+        insert_item = _insert_item
+        delete = _delete
 
     def get_node_count(self):
         """() -> int
