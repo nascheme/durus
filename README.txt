@@ -152,7 +152,7 @@ add calls to self._p_note_change() in every method that makes changes.
 
 * Copyright:
 
-Copyright (c) Corporation for National Research Initiatives 2009. All
+Copyright (c) Corporation for National Research Initiatives 2013. All
 Rights Reserved.
 
 

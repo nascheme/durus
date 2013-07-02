@@ -4,19 +4,22 @@ $Id$
 """
 from durus.persistent import PersistentObject
 
+CACHE_LEN = True
+
 class BNode (PersistentObject):
     """
     Instance attributes:
       items: list
       nodes: [BNode]
     """
-    __slots__ = ['items', 'nodes']
-
     minimum_degree = 2 # a.k.a. t
+
+    __slots__ = ['items', 'nodes', '_len']
 
     def __init__(self):
         self.items = []
         self.nodes = None
+        self._len = 0
 
     def is_leaf(self):
         return self.nodes is None
@@ -92,7 +95,7 @@ class BNode (PersistentObject):
         else:
             return self.nodes[position].search(key)
 
-    def insert_item(self, item):
+    def _insert_item(self, item):
         """(item:(key:anything, value:anything))
         """
         assert not self.is_full()
@@ -109,14 +112,43 @@ class BNode (PersistentObject):
             if child.is_full():
                 self.split_child(position, child)
                 if key == self.items[position][0]:
-                     self.items[position] = item
-                     self._p_note_change()
+                    self.items[position] = item
+                    self._p_note_change()
                 else:
-                     if key > self.items[position][0]:
-                         position += 1
-                     self.nodes[position].insert_item(item)
+                    if key > self.items[position][0]:
+                        position += 1
+                    self.nodes[position].insert_item(item)
             else:
                 self.nodes[position].insert_item(item)
+                self._p_note_change()
+
+    def _insert_item_len(self, item):
+        """(item:(key:anything, value:anything))
+        """
+        assert not self.is_full()
+        key = item[0]
+        position = self.get_position(key)
+        if position < len(self.items) and self.items[position][0] == key:
+            self.items[position] = item
+            delta = 0
+        elif self.is_leaf():
+            self.items.insert(position, item)
+            delta = 1
+        else:
+            child = self.nodes[position]
+            if child.is_full():
+                self.split_child(position, child)
+                if key == self.items[position][0]:
+                    self.items[position] = item
+                    delta = 0
+                else:
+                    if key > self.items[position][0]:
+                        position += 1
+                    delta = self.nodes[position].insert_item(item)
+            else:
+                delta = self.nodes[position].insert_item(item)
+        self._len += delta
+        return delta
 
     def split_child(self, position, child):
         """(position:int, child:BNode)
@@ -137,6 +169,9 @@ class BNode (PersistentObject):
             assert len(bigger.nodes) == len(child.nodes)
         self.items.insert(position, splitting_key)
         self.nodes.insert(position + 1, bigger)
+        if CACHE_LEN:
+            bigger._update_len()
+            child._update_len()
         self._p_note_change()
 
     def get_min_item(self):
@@ -157,7 +192,7 @@ class BNode (PersistentObject):
         else:
             return self.nodes[-1].get_max_item()
 
-    def delete(self, key):
+    def _delete(self, key):
         """(key:anything)
         Delete the item with this key.
         This is intended to follow the description in 19.3 of
@@ -246,6 +281,103 @@ class BNode (PersistentObject):
                 self.items = self.nodes[0].items
                 self.nodes = self.nodes[0].nodes
 
+    def _delete_len(self, key):
+        """(key:anything)
+        Delete the item with this key.
+        This is intended to follow the description in 19.3 of
+        'Introduction to Algorithms' by Cormen, Lieserson, and Rivest.
+        """
+        def is_big(node):
+            # Precondition for recursively calling node.delete(key).
+            return node and len(node.items) >= node.minimum_degree
+        p = self.get_position(key)
+        matches = p < len(self.items) and self.items[p][0] == key
+        if self.is_leaf():
+            if matches:
+                # Case 1.
+                del self.items[p]
+            else:
+                raise KeyError(key)
+        else:
+            node = self.nodes[p]
+            lower_sibling = p > 0 and self.nodes[p - 1]
+            upper_sibling = p < len(self.nodes) - 1 and self.nodes[p + 1]
+            if matches:
+                # Case 2.
+                if is_big(node):
+                    # Case 2a.
+                    extreme = node.get_max_item()
+                    node.delete(extreme[0])
+                    node._len -= 1
+                    self.items[p] = extreme
+                elif is_big(upper_sibling):
+                    # Case 2b.
+                    extreme = upper_sibling.get_min_item()
+                    upper_sibling.delete(extreme[0])
+                    upper_sibling._len -= 1
+                    self.items[p] = extreme
+                else:
+                    # Case 2c.
+                    extreme = upper_sibling.get_min_item()
+                    upper_sibling.delete(extreme[0])
+                    node.items = node.items + [extreme] + upper_sibling.items
+                    if not node.is_leaf():
+                        node.nodes = node.nodes + upper_sibling.nodes
+                    del self.items[p]
+                    del self.nodes[p + 1]
+                    node._update_len()
+            else:
+                if not is_big(node):
+                    if is_big(lower_sibling):
+                        # Case 3a1: Shift an item from lower_sibling.
+                        node.items.insert(0, self.items[p - 1])
+                        self.items[p - 1] = lower_sibling.items[-1]
+                        del lower_sibling.items[-1]
+                        lower_sibling._len -= 1
+                        if not node.is_leaf():
+                            node.nodes.insert(0, lower_sibling.nodes[-1])
+                            del lower_sibling.nodes[-1]
+                            movelen = node.nodes[0]._len
+                            node._len += movelen
+                            lower_sibling._len -= movelen
+                    elif is_big(upper_sibling):
+                        # Case 3a2: Shift an item from upper_sibling.
+                        node.items.append(self.items[p])
+                        self.items[p] = upper_sibling.items[0]
+                        del upper_sibling.items[0]
+                        node._len += 1
+                        if not node.is_leaf():
+                            node.nodes.append(upper_sibling.nodes[0])
+                            del upper_sibling.nodes[0]
+                            movelen = node.nodes[-1]._len
+                            node._len += movelen
+                            upper_sibling._len -= movelen
+                    elif lower_sibling:
+                        # Case 3b1: Merge with lower_sibling
+                        node.items = (lower_sibling.items + [self.items[p-1]] +
+                                      node.items)
+                        if not node.is_leaf():
+                            node.nodes = lower_sibling.nodes + node.nodes
+                        del self.items[p-1]
+                        del self.nodes[p-1]
+                        node._len += lower_sibling._len - 1
+                    else:
+                        # Case 3b2: Merge with upper_sibling
+                        node.items = (node.items + [self.items[p]] +
+                                      upper_sibling.items)
+                        if not node.is_leaf():
+                            node.nodes = node.nodes + upper_sibling.nodes
+                        del self.items[p]
+                        del self.nodes[p+1]
+                        node._len += upper_sibling._len - 1
+                assert is_big(node)
+                node.delete(key)
+            if not self.items:
+                # This can happen when self is the root node.
+                self.items = self.nodes[0].items
+                self.nodes = self.nodes[0].nodes
+        self._len -= 1
+
     def get_count(self):
         """() -> int
         How many items are stored in this node and descendants?
@@ -254,6 +386,22 @@ class BNode (PersistentObject):
         for node in self.nodes or []:
             result += node.get_count()
         return result
+
+    if CACHE_LEN:
+
+        def _update_len(self):
+            """recalculate len for one node"""
+            result = len(self.items)
+            for node in self.nodes or []:
+                result += node._len
+            self._len = result
+
+        insert_item = _insert_item_len
+        delete = _delete_len
+
+    else:
+        insert_item = _insert_item
+        delete = _delete
 
     def get_node_count(self):
         """() -> int
@@ -332,30 +480,52 @@ class BTree (PersistentObject):
 
     __bool__ = __nonzero__
 
-    def iteritems(self):
-        for item in self.root:
-            yield item
+    if hasattr({}, 'iteritems'):
+        # python 2.x
 
-    def iterkeys(self):
-        for item in self.root:
-            yield item[0]
+        def iteritems(self):
+            for item in self.root:
+                yield item
 
-    def itervalues(self):
-        for item in self.root:
-            yield item[1]
+        def iterkeys(self):
+            for item in self.root:
+                yield item[0]
 
-    def items(self):
-        return list(self.iteritems())
+        def itervalues(self):
+            for item in self.root:
+                yield item[1]
 
-    def keys(self):
-        return list(self.iterkeys())
+        def items(self):
+            return list(self.iteritems())
 
-    def values(self):
-        return list(self.itervalues())
+        def keys(self):
+            return list(self.iterkeys())
 
-    def __iter__(self):
-        for key in self.iterkeys():
-            yield key
+        def values(self):
+            return list(self.itervalues())
+
+        def __iter__(self):
+            for key in self.iterkeys():
+                yield key
+
+    else:
+        # python 3.x
+
+        def items(self):
+            for item in self.root:
+                yield item
+
+        def keys(self):
+            for item in self.root:
+                yield item[0]
+
+        def values(self):
+            for item in self.root:
+                yield item[1]
+
+        def __iter__(self):
+            for key in self.keys():
+                yield key
 
     def __reversed__(self):
         for item in reversed(self.root):
@@ -422,6 +592,8 @@ class BTree (PersistentObject):
             # replace and split.
             node = self.root.__class__()
             node.nodes = [self.root]
+            if CACHE_LEN:
+                node._len = self.root._len
             node.split_child(0, node.nodes[0])
             self.root = node
         self.root.insert_item((key, value))
@@ -438,10 +610,16 @@ class BTree (PersistentObject):
         assert self, 'empty BTree has no max item'
         return self.root.get_max_item()
 
-    def __len__(self):
-        """() -> int
-        Compute and return the total number of items."""
-        return self.root.get_count()
+    if CACHE_LEN:
+        def __len__(self):
+            """() -> int
+            Compute and return the total number of items (fast O(1) version)."""
+            return self.root._len
+    else:
+        def __len__(self):
+            """() -> int
+            Compute and return the total number of items."""
+            return self.root.get_count()
 
     def items_backward(self):
         """() -> generator
@@ -465,7 +643,7 @@ class BTree (PersistentObject):
         """(key, closed=False) -> generator
         If closed is true, generate in reverse order all items with keys
         less than or equal to the given key.
-        If closed is true, generate in reverse order all items with keys
+        If closed is false, generate in reverse order all items with keys
         less than the given key.
         """
         if closed:
