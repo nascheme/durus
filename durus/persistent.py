@@ -113,8 +113,7 @@ except ImportError:
 
         def __setattr__(self, name, value):
             if name[:3] != '_p_' and name not in _GHOST_SAFE_ATTRIBUTES:
-                if self._p_status != UNSAVED:
-                    self._p_note_change()
+                self._p_note_change()
             _setattribute(self, name, value)
 
     def call_if_persistent(f, x):

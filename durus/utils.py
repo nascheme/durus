@@ -37,11 +37,6 @@ else:
     def iteritems(x):
         return x.items()
     from io import BytesIO
-    try:
-        import zodbpickle.pickle as pickle
-        sys.modules['pickle'] = pickle
-    except ImportError:
-        pass
     from pickle import dumps, loads, Unpickler, Pickler
 
 _used = [dumps, loads, Unpickler, Pickler, next]  # to quiet code checker.

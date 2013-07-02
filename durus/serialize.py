@@ -139,7 +139,7 @@ class ObjectReader (object):
         def persistent_load(oid_klass):
             oid, klass = oid_klass
             return get_instance(oid, klass, connection)
-        unpickler = Unpickler(file, errors='bytes')
+        unpickler = Unpickler(file)
         unpickler.persistent_load = persistent_load
         return unpickler
 

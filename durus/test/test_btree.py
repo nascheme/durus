@@ -5,7 +5,8 @@ $Id$
 from durus.btree import BTree, BNode
 from durus.connection import Connection
 from durus.storage import MemoryStorage
-from random import randint
+from random import randint, seed
+from copy import deepcopy
 from pytest import raises, skip
 import sys
 
@@ -303,12 +304,17 @@ class TestCoverage(object):
         assert bt.get_depth() == 3, bt.get_depth()
         assert bt.get_node_count() == 34, bt.get_node_count()
 
+DEBUG = False
+SAME_RANDOM = True
 
 class TestSlow(object):
 
     def test_slow(self):
         if '--slow' not in sys.argv:
             skip('test not run because it is slow')
+
+        if SAME_RANDOM:
+            seed(42)
 
         for bnode_class in BNode.__subclasses__():
             if bnode_class.minimum_degree not in (4, 16):
@@ -320,20 +326,30 @@ class TestSlow(object):
             limit = 10000
             for k in range(limit*10):
                 number = randint(0, limit)
+                if DEBUG:
+                    bt_bak = deepcopy(bt)
+                    d_bak = deepcopy(d)
                 if number in bt:
                     assert number in d
                     if randint(0, 1) == 1:
                         del bt[number]
                         del d[number]
-                        sys.stdout.write('\ndel bt[%s]' % number)
+                        op = 'del'
+                        #sys.stdout.write('\ndel bt[%s]' % number)
                 else:
                     bt[number] = 1
                     d[number] = 1
-                if k % limit == 0:
+                    op = 'ins'
+                if DEBUG or k % limit == 0:
                     d_items = sorted(d.items())
                     assert d_items == list(bt.items())
-                    #assert len(d_items) == len(bt)
-                    assert len(d_items) == bt.get_count()
+                    if DEBUG and not len(d_items) == len(bt):
+                        # set a breakpoint here for interactive debugging
+                        if op == 'ins':
+                            bt_bak[number] = 1
+                        else:
+                            del bt_bak[number]
+                    assert len(d_items) == len(bt)
 
 class TestDurus(object):
 
