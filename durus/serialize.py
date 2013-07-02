@@ -5,13 +5,16 @@ $Id$
 from durus.persistent import call_if_persistent
 from durus.utils import int4_to_str, str_to_int4, join_bytes, BytesIO
 from durus.utils import Pickler, Unpickler, loads, dumps, as_bytes
+from durus.utils import BEST_COMMON_PROTOCOL as PICKLE_PROTOCOL
 from types import MethodType
 from zlib import compress, decompress, error as zlib_error
 import struct
 import sys
 
 WRITE_COMPRESSED_STATE_PICKLES = True
-PICKLE_PROTOCOL = 2
+
+## if pickling protocol should be always backward compatible, uncomment
+#PICKLE_PROTOCOL = 2
 
 def pack_record(oid, data, refs):
     """(oid:str, data:str, refs:str) -> record:str
