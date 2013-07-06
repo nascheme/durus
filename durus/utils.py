@@ -21,7 +21,7 @@ def str_to_int4(v):
     return unpack(">L", v)[0]
 
 try:
-    from zodbpickle.pickle import dumps, loads, Unpickler, Pickler
+    from zodbpickle.fastpickle import dumps, loads, Unpickler, Pickler
     BEST_COMMON_PROTOCOL = 3
     _have_pickle = True
 except ImportError:
