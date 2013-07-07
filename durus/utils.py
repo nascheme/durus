@@ -21,8 +21,13 @@ def int4_to_str(v):
 def str_to_int4(v):
     return unpack(">L", v)[0]
 
+IS_PYPY = hasattr(sys, 'pypy_version_info')
+
 try:
-    from zodbpickle.fastpickle import dumps, loads, Unpickler, Pickler
+    if not IS_PYPY:
+        from zodbpickle.fastpickle import dumps, loads, Unpickler, Pickler
+    else:
+        from zodbpickle.slowpickle import dumps, loads, Unpickler, Pickler
     BEST_COMMON_PROTOCOL = 3
     _have_pickle = True
 except ImportError:
@@ -38,7 +43,10 @@ if sys.version_info[0] < 3:
         return x.next()
     from cStringIO import StringIO as BytesIO
     if not _have_pickle:
-        from cPickle import dumps, loads, Unpickler, Pickler
+        if not IS_PYPY:
+            from cPickle import dumps, loads, Unpickler, Pickler
+        else:
+            from pickle import dumps, loads, Unpickler, Pickler
 else:
     xrange = range
     from builtins import next, bytearray, bytes

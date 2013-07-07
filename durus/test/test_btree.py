@@ -5,6 +5,7 @@ $Id$
 from durus.btree import BTree, BNode
 from durus.connection import Connection
 from durus.storage import MemoryStorage
+from durus.utils import IS_PYPY
 from random import randint, seed
 from copy import deepcopy
 from pytest import raises, skip
@@ -13,6 +14,10 @@ import sys
 class TestCoverage(object):
 
     def test_no_arbitrary_attributes(self):
+        if IS_PYPY:
+            if 'durus._persistent' in sys.modules:
+                skip('does not work in PyPy if _persistent is used')
+
         bt = BTree()
         with raises(AttributeError):
             setattr(bt, 'bogus', 1)

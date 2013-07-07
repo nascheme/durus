@@ -3,15 +3,24 @@ $URL$
 $Id$
 """
 from durus.__init__ import __version__
+from durus.utils import IS_PYPY
 import re, sys, os
-assert sys.version >= "2.6"
+assert sys.version_info[:2] >= (2, 6)
 
-try:
-    assert 'USE_DISTUTILS' not in os.environ
-    from setuptools import setup, Extension
-except (ImportError, AssertionError):
-    from distutils.core import setup
-    from distutils.extension import Extension
+from setuptools import setup, Extension
+
+from setuptools.command.test import test as TestCommand
+
+class PyTest(TestCommand):
+    def finalize_options(self):
+        TestCommand.finalize_options(self)
+        self.test_args = []
+        self.test_suite = True
+    def run_tests(self):
+        #import here, cause outside the eggs aren't loaded
+        import pytest
+        errno = pytest.main(self.test_args)
+        sys.exit(errno)
 
 if 'sdist' in sys.argv:
     if sys.platform == 'darwin':
@@ -32,19 +41,42 @@ if 'sdist' in sys.argv:
     assert open("README.txt").read().count(copyright) == 1
 
 persistent = Extension(name="durus._persistent", sources=["_persistent.c"])
-setup(name = "Durus",
-      version = __version__,
-      description = "A Python Object Database",
-      long_description = """
-      Serves and manages changes to persistent objects being used in
-      multiple client processes.
-      """,
-      scripts = ["scripts/durus"],
-      packages = ["durus"],
-      platforms = ['Python >=2.6'],
-      author = "CNRI",
-      author_email = "webmaster@mems-exchange.org",
-      url = "http://www.mems-exchange.org/software/durus/",
-      ext_modules = [persistent],
-      license = "see LICENSE.txt",
+setup(
+    name = "Durus",
+    version = __version__,
+    description = "A Python Object Database",
+    long_description = """
+    Serves and manages changes to persistent objects being used in
+    multiple client processes.
+    """,
+    classifiers=[
+        'Development Status :: 4 - Beta',
+        'Programming Language :: Python',
+        'Programming Language :: Python :: 2',
+        'Programming Language :: Python :: 2.6',
+        'Programming Language :: Python :: 2.7',
+        'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.2',
+        'Programming Language :: Python :: 3.3',
+        'Programming Language :: Python :: Implementation :: CPython',
+        'Framework :: Durus',
+        'Topic :: Database',
+        'Topic :: Software Development :: Libraries :: Python Modules',
+        'Operating System :: Microsoft :: Windows',
+        'Operating System :: Unix',
+        'Operating System :: MacOS :: MacOS X',
+        ],
+    scripts = ["scripts/durus"],
+    packages = ["durus"],
+    platforms = ['Python >=2.6'],
+    author = "CNRI",
+    author_email = "webmaster@mems-exchange.org",
+    url = "http://www.mems-exchange.org/software/durus/",
+    ext_modules = [persistent] if not IS_PYPY else None,
+    license = "see LICENSE.txt",
+    tests_require=['pytest'],
+    cmdclass = {'test': PyTest},
+    install_requires=[
+        'setuptools',
+        ],
       )

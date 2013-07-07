@@ -10,8 +10,8 @@ file, with data converted to a form that is compatible with Python 3.
 
 This modifies the unpickler so all that values that would be binary strings
 are actually unpickled as unicode strings, and everything is repickled for
-placement in the new storage file.  Note that this conversion is not 
-reversable, so please be especially careful to keep a backup of your storage 
+placement in the new storage file.  Note that this conversion is not
+reversable, so please be especially careful to keep a backup of your storage
 file.
 
 This converts all binary strings except _p_oid attribute values.  If your
@@ -19,7 +19,7 @@ storage has other binary string values that you don't want converted to
 unicode strings, you probably need to modify this script.
 """
 import sys
-assert sys.version >= "3", "This script is for py3k only."
+assert sys.version_info[0] >= 3, "This script is for py3k only."
 
 # # We modify the the Unpickler class.
 import pickle

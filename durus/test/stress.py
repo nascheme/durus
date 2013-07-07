@@ -15,10 +15,7 @@ from durus.client_storage import ClientStorage
 from durus.connection import Connection
 from durus.error import ConflictError
 
-if sys.version < "2.6":
-    from md5 import new as md5_new
-else:
-    from hashlib import md5 as md5_new
+from hashlib import md5 as md5_new
 
 MAX_OBJECTS = 10000
 MAX_DEPTH = 20
