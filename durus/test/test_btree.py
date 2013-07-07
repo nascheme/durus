@@ -36,6 +36,7 @@ class TestCoverage(object):
         for j in 'jklmoab':
             bt.add(j)
         del bt['k']
+        assert len(bt) == bt.root.get_count()
 
     def test_delete_case_2b(self):
         bt = BTree(BNode)
@@ -43,6 +44,7 @@ class TestCoverage(object):
             bt.add(j)
         assert bt.root.items == [('b', True), ('d', True)]
         del bt['d']
+        assert len(bt) == bt.root.get_count()
 
     def test_delete_case_2c(self):
         bt = BTree(BNode)
@@ -50,6 +52,7 @@ class TestCoverage(object):
             bt.add(j)
         assert bt.root.items == [('d', True)]
         del bt['d']
+        assert len(bt) == bt.root.get_count()
 
     def _delete_case_3(self):
         bt = BTree(BNode)
@@ -69,25 +72,30 @@ class TestCoverage(object):
         bt = self._delete_case_3()
         del bt[39]
         del bt[55]
+        assert len(bt) == bt.root.get_count()
 
     def test_delete_case_3a2(self):
         bt = self._delete_case_3()
         del bt[39]
         del bt[7]
+        assert len(bt) == bt.root.get_count()
 
     def test_delete_case_3b1(self):
         bt = self._delete_case_3()
         del bt[39]
+        assert len(bt) == bt.root.get_count()
 
     def test_delete_case_3b2(self):
         bt = self._delete_case_3()
         del bt[7]
+        assert len(bt) == bt.root.get_count()
 
     def test_nonzero(self):
         bt = BTree()
         assert not bt
         bt['1'] = 1
         assert bt
+        assert len(bt) == bt.root.get_count()
 
     def test_setdefault(self):
         bt = BTree()
@@ -102,8 +110,10 @@ class TestCoverage(object):
 
     def test_find_extremes(self):
         bt = BTree()
-        raises(AssertionError, bt.get_min_item)
-        raises(AssertionError, bt.get_max_item)
+        with raises(AssertionError):
+            bt.get_min_item()
+        with raises(AssertionError):
+            bt.get_max_item()
         for j in range(100):
             bt.add(j)
         assert bt.get_min_item() == (0, True)
@@ -276,7 +286,8 @@ class TestCoverage(object):
             def items(self):
                 return [('1',2)]
         bt.update(Fake())
-        raises(TypeError, bt.update, 1, 2)
+        with raises(TypeError):
+            bt.update(1, 2)
 
     def test_insert_item(self):
         # This sequences leads to a splitting where
@@ -303,6 +314,8 @@ class TestCoverage(object):
         assert bt.set_bnode_minimum_degree(4) == True
         assert bt.get_depth() == 3, bt.get_depth()
         assert bt.get_node_count() == 34, bt.get_node_count()
+        assert len(bt) == bt.root.get_count()
+
 
 DEBUG = False
 SAME_RANDOM = True

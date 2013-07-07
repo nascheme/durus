@@ -122,9 +122,13 @@ class BNode (PersistentObject):
         self._len += delta
         return delta
 
+    def __len__(self):
+        return self._len
+
     def split_child(self, position, child):
         """(position:int, child:BNode)
         """
+
         assert not self.is_full()
         assert not self.is_leaf()
         assert self.nodes[position] is child
@@ -142,7 +146,7 @@ class BNode (PersistentObject):
         self.items.insert(position, splitting_key)
         self.nodes.insert(position + 1, bigger)
         bigger._update_len()
-        child._update_len()
+        child._len -= bigger._len + 1
         self._p_note_change()
 
     def get_min_item(self):
@@ -169,6 +173,7 @@ class BNode (PersistentObject):
         This is intended to follow the description in 19.3 of
         'Introduction to Algorithms' by Cormen, Lieserson, and Rivest.
         """
+
         def is_big(node):
             # Precondition for recursively calling node.delete(key).
             return node and len(node.items) >= node.minimum_degree
@@ -190,13 +195,11 @@ class BNode (PersistentObject):
                     # Case 2a.
                     extreme = node.get_max_item()
                     node.delete(extreme[0])
-                    node._len -= 1
                     self.items[p] = extreme
                 elif is_big(upper_sibling):
                     # Case 2b.
                     extreme = upper_sibling.get_min_item()
                     upper_sibling.delete(extreme[0])
-                    upper_sibling._len -= 1
                     self.items[p] = extreme
                 else:
                     # Case 2c.
@@ -213,6 +216,7 @@ class BNode (PersistentObject):
                     if is_big(lower_sibling):
                         # Case 3a1: Shift an item from lower_sibling.
                         node.items.insert(0, self.items[p - 1])
+                        node._len += 1
                         self.items[p - 1] = lower_sibling.items[-1]
                         del lower_sibling.items[-1]
                         lower_sibling._len -= 1
@@ -225,9 +229,10 @@ class BNode (PersistentObject):
                     elif is_big(upper_sibling):
                         # Case 3a2: Shift an item from upper_sibling.
                         node.items.append(self.items[p])
+                        node._len += 1
                         self.items[p] = upper_sibling.items[0]
                         del upper_sibling.items[0]
-                        node._len += 1
+                        upper_sibling._len -= 1
                         if not node.is_leaf():
                             node.nodes.append(upper_sibling.nodes[0])
                             del upper_sibling.nodes[0]
@@ -240,18 +245,19 @@ class BNode (PersistentObject):
                                       node.items)
                         if not node.is_leaf():
                             node.nodes = lower_sibling.nodes + node.nodes
+                        node._len += lower_sibling._len + 1
                         del self.items[p-1]
                         del self.nodes[p-1]
-                        node._len += lower_sibling._len - 1
                     else:
                         # Case 3b2: Merge with upper_sibling
                         node.items = (node.items + [self.items[p]] +
                                       upper_sibling.items)
                         if not node.is_leaf():
                             node.nodes = node.nodes + upper_sibling.nodes
+                        node._len += upper_sibling._len + 1
                         del self.items[p]
                         del self.nodes[p+1]
-                        node._len += upper_sibling._len - 1
+
                 assert is_big(node)
                 node.delete(key)
             if not self.items:
@@ -484,7 +490,7 @@ class BTree (PersistentObject):
 
     def __len__(self):
         """() -> int
-        Compute and return the total number of items (fast O(1) version)."""
+        Return the total number of items (fast O(1) version)."""
         return self.root._len
 
     def items_backward(self):
