@@ -3,3 +3,4 @@ Durus.egg-info
 __pycache__
 dist
 _persistent.so
+*.egg
