@@ -52,7 +52,7 @@ def extract_class_name(record):
     except IndexError:
         return "?"
 
-if sys.version < "3":
+if sys.version_info[0] < 3:
     def method(a, b):
         return MethodType(a, b, object)
 else:
@@ -142,7 +142,7 @@ class ObjectReader (object):
         def persistent_load(oid_klass):
             oid, klass = oid_klass
             return get_instance(oid, klass, connection)
-        unpickler = Unpickler(file, errors='bytes')
+        unpickler = Unpickler(file)
         unpickler.persistent_load = persistent_load
         return unpickler
 

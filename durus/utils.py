@@ -5,8 +5,9 @@ $Id$
 In Durus names, 'int4' is an unsigned 32-bit whole number,
 and 'int8' is an unsigned 64-bit whole number.
 """
-from struct import pack, unpack
 import sys
+from struct import pack, unpack
+from functools import partial
 
 def str_to_int8(s):
     return unpack(">Q", s)[0]
@@ -28,7 +29,7 @@ except ImportError:
     BEST_COMMON_PROTOCOL = 2
     _have_pickle = False
 
-if sys.version < "3":
+if sys.version_info[0] < 3:
     from __builtin__ import xrange
     from __builtin__ import str as byte_string
     def iteritems(x):
@@ -47,6 +48,11 @@ else:
     from io import BytesIO
     if not _have_pickle:
         from pickle import dumps, loads, Unpickler, Pickler
+    # define a default error handler for python 3.
+    # this will only work with zodbpickle, but does not harm.
+    loads = partial(loads, errors='bytes')
+    Unpickler = partial(Unpickler, errors='bytes')
+
 del _have_pickle
 
 _used = [dumps, loads, Unpickler, Pickler, next]  # to quiet code checker.
