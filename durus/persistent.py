@@ -13,7 +13,7 @@ GHOST = -1
 
 
 try:
-    if 0 and IS_PYPY:
+    if IS_PYPY:
         # the current call of C extensions is much slower
         raise ImportError
     from durus._persistent import PersistentBase, ConnectionBase
@@ -132,9 +132,8 @@ class PersistentObject (PersistentBase):
     """
     All Durus persistent objects should inherit from this class.
     """
-    import sys
-    if hasattr(PersistentBase, '__weakref__'):
-        # weakref is different and alteady defined in PyPy
+    if IS_PYPY:
+        # weakref is different and already defined in PyPy
         # PyPy Issue1269
         __slots__ = []
     else:

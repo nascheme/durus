@@ -10,6 +10,7 @@ class BNode (PersistentObject):
     Instance attributes:
       items: list
       nodes: [BNode]
+      _len:  int
     """
     minimum_degree = 2 # a.k.a. t
 
