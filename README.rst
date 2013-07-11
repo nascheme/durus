@@ -93,7 +93,7 @@ Example using ClientStorage to open a Connection to a Durus server::
 
 Note that the ClientStorage constructor supports the ``address`` keyword
 that you can use to specify the address to use.  The value must be either
-a (host, port) tuple or a string giving a path to use for a unix domain
+a ``(host, port)`` tuple or a string giving a path to use for a unix domain
 socket. If you provide the address you should be sure to start the
 storage server the same way.  The ``durus`` command line tool also supports 
 options to specify the address.
