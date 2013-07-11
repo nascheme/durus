@@ -98,7 +98,7 @@ socket. If you provide the address you should be sure to start the
 storage server the same way.  The ``durus`` command line tool also supports 
 options to specify the address.
 
-The connection instance has a get_root() method that you can use to
+The connection instance has a ``get_root()` method that you can use to
 obtain the root object.
 
 In your program, you can make changes to the root object attributes,
@@ -120,7 +120,7 @@ commit a reference to x in some object that is already stored in the
 database.  The root object is always there, for example, so you can do
 something like this::
     
-    # Assume mymodule defines A as a subclass of Persistent.
+    # Assume mymodule defines A as a subclass of PersistentObject.
     from mymodule import A 
     x = A()
     root = connection.get_root() # connection set as shown above.
@@ -129,9 +129,9 @@ something like this::
 
 Subsequent changes to ``x``, or to new ``A`` instances put on attributes of ``X``,
 and so on, will all be managed by the ``Connection`` just as for the root
-object.  This management of the ``Persistent`` instance continues as long
+object.  This management of the ``PersistentObject`` instance continues as long
 as the instance is in the storage.  Sometimes, though, we wish to
-remove *garbage* ``Persistent`` instances from the storage so that the file 
+remove *garbage* ``PersistentObject`` instances from the storage so that the file 
 can be smaller.  This garbage collection can be done manually by calling
 the ``Connection``'s ``pack()`` method.  If you are using a storage server to
 share a ``Storage``, you can use the ``gcinterval`` argument to tell it to
@@ -141,16 +141,16 @@ take care of garbage collection automatically.
 Non-Persistent Containers:
 --------------------------
 
-When you change an attribute of a ``Persistent`` instance, the fact that
+When you change an attribute of a ``PersistentObject`` instance, the fact that
 the instance has been changed is noted with the ``Connection``, so that
 the ``Connection`` knows what instances need to be stored on the next
 ``commit()``.  The same change-tracking occurs automatically when you make
 dict-like changes to ``PersistentDict`` instances or list-like changes to
 ``PersistentList`` instances.  If, however, you make changes to a
 non-persistent container, even if it is the value of an attribute of a
-``Persistent`` instance, the changes are *not* automatically noted with
+``PersistentObject`` instance, the changes are *not* automatically noted with
 the Connection.  To make sure that your changes do get saved, you must
-call the ``_p_note_change()`` method of the ``Persistent`` instance that
+call the ``_p_note_change()`` method of the ``PersistentObject`` instance that
 refers to the changed non-persistent container.  You can see an
 example of this by looking at the source code of ``PersistentDict`` and
 ``PersistentList``, both of which maintain a non-persistent container on a
