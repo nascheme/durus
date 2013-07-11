@@ -1,4 +1,4 @@
-3.9.3: (2013-07-01)
+3.9.3: (2013-07-11)
 
 Optionally support zodbpickle when it is installed. This gives python2 compatibility.
 
@@ -6,6 +6,10 @@ Fix an old bug where _persistent.so differes from persistent.py .
 
 Rework len support to efficiently calculate len on every delete or insert.
 The time penalty is about 6 percent.
+
+Durus works experimental partially in a PyPy environment. The extension is
+much slower and therefore disabled. The server does not work with PyPy, yet.
+This will be improved.
 
 3.9.2: (2013-06-30)
 
