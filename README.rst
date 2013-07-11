@@ -104,18 +104,18 @@ obtain the root object.
 In your program, you can make changes to the root object attributes,
 and call connection.commit() or connection.abort() to lock in or
 revert changes made since the last commit.  The root object is
-actually an instance of durus.persistent_dict.PersistentDict, which
+actually an instance of ``durus.persistent_dict.PersistentDict``, which
 means that it can be used like a regular dict, except that changes
 will be managed by the Connection.  There is a similar class,
-durus.persistent_list.PersistentList that provides list-like behavior,
-except managed by the Connection.
+``durus.persistent_list.PersistentList`` that provides list-like behavior,
+except managed by the ``Connection``.
 
-PersistentList and PersistentDict both inherit from
-durus.persistent.Persistent, and this is the key to making your own
+``PersistentList`` and ``PersistentDict`` both inherit from
+``durus.persistent.PersistentObject`, and this is the key to making your own
 classes participate in the Durus persistence system.  Just add
-Persistent class A"s list of bases, and your instances will know how
-to manage changes to their attributes through a Connection.  To
-actually store an instance x of A in the storage, though, you need to
+``Persistent`` class ``A``'s list of bases, and your instances will know how
+to manage changes to their attributes through a ``Connection``.  To
+actually store an instance ``x`` of ``A`` in the storage, though, you need to
 commit a reference to x in some object that is already stored in the
 database.  The root object is always there, for example, so you can do
 something like this::
@@ -127,35 +127,35 @@ something like this::
     root["sample"] = x           # root is dict-like
     connection.commit()          # Now x is stored.
 
-Subsequent changes to x, or to new A instances put on attributes of X,
-and so on, will all be managed by the Connection just as for the root
-object.  This management of the Persistent instance continues as long
+Subsequent changes to ``x``, or to new ``A`` instances put on attributes of ``X``,
+and so on, will all be managed by the ``Connection`` just as for the root
+object.  This management of the ``Persistent`` instance continues as long
 as the instance is in the storage.  Sometimes, though, we wish to
-remove ``garbage`` Persistent instances from the storage so that the file 
+remove *garbage* ``Persistent`` instances from the storage so that the file 
 can be smaller.  This garbage collection can be done manually by calling
-the Connection's pack() method.  If you are using a storage server to
-share a Storage, you can use the gcinterval argument to tell it to
+the ``Connection``'s ``pack()`` method.  If you are using a storage server to
+share a ``Storage``, you can use the ``gcinterval`` argument to tell it to
 take care of garbage collection automatically.
 
 
-Non-Persistent Containers.
+Non-Persistent Containers:
 --------------------------
 
-When you change an attribute of a Persistent instance, the fact that
-the instance has been changed is noted with the Connection, so that
-the Connection knows what instances need to be stored on the next
-commit().  The same change-tracking occurs automatically when you make
-dict-like changes to PersistentDict instances or list-like changes to
-PersistentList instances.  If, however, you make changes to a
+When you change an attribute of a ``Persistent`` instance, the fact that
+the instance has been changed is noted with the ``Connection``, so that
+the ``Connection`` knows what instances need to be stored on the next
+``commit()``.  The same change-tracking occurs automatically when you make
+dict-like changes to ``PersistentDict`` instances or list-like changes to
+``PersistentList`` instances.  If, however, you make changes to a
 non-persistent container, even if it is the value of an attribute of a
-Persistent instance, the changes are *not* automatically noted with
+``Persistent`` instance, the changes are *not* automatically noted with
 the Connection.  To make sure that your changes do get saved, you must
-call the _p_note_change() method of the Persistent instance that
+call the ``_p_note_change()`` method of the ``Persistent`` instance that
 refers to the changed non-persistent container.  You can see an
-example of this by looking at the source code of PersistentDict and
-PersistentList, both of which maintain a non-persistent container on a
+example of this by looking at the source code of ``PersistentDict`` and
+``PersistentList``, both of which maintain a non-persistent container on a
 ``data`` attribute, shadow the methods of the underlying container, and
-add calls to self._p_note_change() in every method that makes changes.
+add calls to ``self._p_note_change()`` in every method that makes changes.
 
 
 * Copyright:
