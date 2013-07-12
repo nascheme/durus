@@ -14,7 +14,8 @@ from durus.storage_server import STATUS_INVALID, wait_for_server
 from durus.utils import int8_to_str, BytesIO, as_bytes, join_bytes
 from os import unlink, devnull
 from os.path import exists
-from sancho.utest import UTest, raises
+from pytest import raises
+import pytest
 from subprocess import Popen
 from tempfile import mktemp
 from time import sleep
@@ -36,13 +37,13 @@ class FakeSocket (object):
     def write(self, s):
         sys.stdout.write('write %r\n' % s)
 
-class ClientTest (UTest):
+class TestClient (object):
 
     address = ("localhost", 9123)
 
-    def _pre(self):
+    def setup(self):
         self.filename = mktemp()
-        cmd = [sys.executable, __main__.__file__, 
+        cmd = [sys.executable, __main__.__file__,
             '-s', '--file=%s' % self.filename]
         if isinstance(self.address, tuple):
             cmd.append("--port=%s" % self.address[1])
@@ -54,7 +55,7 @@ class ClientTest (UTest):
         Popen(cmd, stdout=output, stderr=output)
         wait_for_server(address=self.address, sleeptime=1, maxtries=10)
 
-    def _post(self):
+    def teardown(self):
         __main__.stop_durus(self.address)
         if exists(self.filename):
             unlink(self.filename)
@@ -62,7 +63,7 @@ class ClientTest (UTest):
         if exists(prepack):
             unlink(prepack)
 
-    def check_client_storage(self):
+    def test_client_storage(self):
         b = ClientStorage(address=self.address)
         c = ClientStorage(address=self.address)
         oid = b.new_oid()
@@ -97,7 +98,7 @@ class ClientTest (UTest):
         b.close()
         c.close()
 
-    def check_oid_reuse(self):
+    def test_oid_reuse(self):
         # Requires ShelfStorage oid reuse pack semantics
         s1 = ClientStorage(address=self.address)
         s1.oid_pool_size = 1
@@ -132,7 +133,7 @@ class ClientTest (UTest):
         assert c1.get(a_oid).__class__ == Persistent
         s1.close()
 
-    def check_oid_reuse_with_invalidation(self):
+    def test_oid_reuse_with_invalidation(self):
         connection = Connection(ClientStorage(address=self.address))
         root = connection.get_root()
         root['x'] = Persistent()
@@ -148,7 +149,7 @@ class ClientTest (UTest):
         root['x'] = Persistent()
         connection.commit()
 
-    def check_write_conflict(self):
+    def test_write_conflict(self):
         s1 = ClientStorage(address=self.address)
         c1 = Connection(s1)
         r1 = c1.get_root()
@@ -156,7 +157,7 @@ class ClientTest (UTest):
         r1._p_note_change()
         raises(WriteConflictError, c1.commit)
 
-    def end_protocol_error(self):
+    def test_end_protocol_error(self):
         s1 = ClientStorage(address=self.address)
         c1 = Connection(s1)
         r1 = c1.get_root()
@@ -164,12 +165,12 @@ class ClientTest (UTest):
         r1._p_note_change()
         raises(ProtocolError, c1.commit)
 
-    def pack_protocol_error(self):
+    def test_pack_protocol_error(self):
         s1 = ClientStorage(address=self.address)
         s1.s = FakeSocket('?')
         raises(ProtocolError, s1.pack)
 
-    def load_protocol_error(self):
+    def test_load_protocol_error(self):
         s1 = ClientStorage(address=self.address)
         c1 = Connection(s1)
         s1.s = FakeSocket('?')
@@ -179,14 +180,7 @@ class ClientTest (UTest):
         s1 = ClientStorage(address=self.address)
         s1.close()
 
-class UnixDomainSocketTest (ClientTest):
+@pytest.mark.skipif("sys.platform == 'win32'")
+class TestUnixDomainSocket(TestClient):
 
     address = "/tmp/test.durus_server"
-
-if __name__ == "__main__":
-    ClientTest()
-    try:
-        from socket import AF_UNIX
-        UnixDomainSocketTest()
-    except ImportError:
-        AF_UNIX = None # quiet the checker

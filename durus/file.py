@@ -114,9 +114,8 @@ class File (object):
     def write(self, s):
         self.obtain_lock()
         self.file.write(s)
-        if os.name == 'nt':
-            # This flush helps the file knows where it ends.
-            self.file.flush()
+        # This flush helps the file knows where it ends.
+        self.file.flush()
 
     def truncate(self):
         self.obtain_lock()

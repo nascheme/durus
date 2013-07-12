@@ -5,23 +5,24 @@ $Id$
 from durus.connection import Connection
 from durus.file import File
 from durus.file_storage import TempFileStorage, FileStorage
+from durus.error import ReadConflictError
 from durus.logger import direct_output
 from durus.persistent import Persistent
 from durus.serialize import pack_record
 from durus.utils import int8_to_str, ShortRead, write_int4_str, as_bytes
 from os import unlink
-from sancho.utest import UTest, raises
+from pytest import raises
 from tempfile import mktemp
 import os
 import sys
 
 
-class FileStorageTest (UTest):
+class TestFileStorage(object):
 
-    def _pre(self):
+    def setup(self):
         direct_output(sys.stdout)
 
-    def check_file_storage(self):
+    def test_file_storage(self):
         name = mktemp()
         b = FileStorage(name)
         assert b.new_oid() == int8_to_str(0)
@@ -47,7 +48,7 @@ class FileStorageTest (UTest):
         raises(ValueError, b.load, int8_to_str(0)) # storage closed
         unlink(name)
 
-    def check_reopen(self):
+    def test_reopen(self):
         f = TempFileStorage()
         filename = f.get_filename()
         if os.name == 'nt':
@@ -58,7 +59,7 @@ class FileStorageTest (UTest):
         f.close()
         g.close()
 
-    def check_open_empty(self):
+    def test_open_empty(self):
         name = mktemp()
         f = open(name, 'w')
         f.close()
@@ -66,7 +67,7 @@ class FileStorageTest (UTest):
         s.close()
         unlink(name)
 
-    def check_short_magic(self):
+    def test_short_magic(self):
         name = mktemp()
         f = open(name, 'w')
         f.write('b')
@@ -74,7 +75,7 @@ class FileStorageTest (UTest):
         raises(AssertionError, FileStorage, name)
         unlink(name)
 
-    def check_wrong_magic(self):
+    def test_wrong_magic(self):
         name = mktemp()
         f = open(name, 'w')
         f.write('bogusbogus')
@@ -82,7 +83,7 @@ class FileStorageTest (UTest):
         raises(AssertionError, FileStorage, name)
         unlink(name)
 
-    def check_bad_record_size(self):
+    def test_bad_record_size(self):
         name = mktemp()
         f = open(name, 'wb')
         g = FileStorage(name)
@@ -93,7 +94,7 @@ class FileStorageTest (UTest):
         raises(ShortRead, FileStorage, name)
         unlink(name)
 
-    def check_repair(self):
+    def test_repair(self):
         name = mktemp()
         g = FileStorage(name)
         g.close()
@@ -111,9 +112,9 @@ class FileStorageTest (UTest):
         unlink(name)
 
 
-class ShelfStorageTest (UTest):
+class TestShelfStorageTest(object):
 
-    def a(self):
+    def test_a(self):
         f = File(prefix='shelftest')
         name = f.get_name()
         f.close()
@@ -130,11 +131,15 @@ class ShelfStorageTest (UTest):
         del r['a7']
         del r['a8']
         c.commit()
+        gone = c.get(deleted_oids[0])
         c.pack()
         c.abort()
         assert c.get(deleted_oids[0])._p_is_ghost()
         assert c.get(deleted_oids[1])._p_is_ghost()
-        raises(KeyError, getattr, c.get(deleted_oids[0]), 'a')
+        gone = c.get(deleted_oids[0])
+        # this is no longer a KeyError because of improved packing
+        with raises(ReadConflictError):
+            getattr(gone, 'a')
         assert len([repr(oid) for oid, record in s.gen_oid_record()]) == 7
         c.commit()
         c.pack()
@@ -151,7 +156,7 @@ class ShelfStorageTest (UTest):
         new_oid = s.new_oid()
         assert new_oid == int8_to_str(12), repr(new_oid)
 
-    def b(self):
+    def test_b(self):
         f = File(prefix='shelftest')
         name = f.get_name()
         f.close()
@@ -172,7 +177,7 @@ class ShelfStorageTest (UTest):
         new_oid = s.new_oid()
         assert new_oid == int8_to_str(11)
 
-    def c(self):
+    def test_c(self):
         f = File(prefix='shelftest')
         name = f.get_name()
         f.close()
@@ -195,8 +200,3 @@ class ShelfStorageTest (UTest):
         assert new_oid == int8_to_str(1), repr(new_oid)
         new_oid = s.new_oid()
         assert new_oid == int8_to_str(2), repr(new_oid)
-
-
-if __name__ == "__main__":
-    FileStorageTest()
-    ShelfStorageTest()

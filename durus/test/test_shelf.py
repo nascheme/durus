@@ -2,14 +2,14 @@
 $URL$
 $Id$
 """
-from sancho.utest import UTest, raises
+from pytest import raises
 from durus.file import File
 from durus.shelf import Shelf
 from durus.utils import ShortRead, int8_to_str, BytesIO, as_bytes
 
-class ShelfTest (UTest):
+class TestShelf(object):
 
-    def a(self):
+    def test_a(self):
         f = File()
         s = Shelf(f)
         name1 = s.next_name()
@@ -27,12 +27,12 @@ class ShelfTest (UTest):
         assert items == [(n, n+n) for n in names]
         assert index == [(n, other.get_position(n)) for n in names]
 
-    def b(self):
+    def test_b(self):
         s = Shelf()
         assert s.get_value(as_bytes('okokokok')) is None
         assert raises(ValueError, s.get_value, as_bytes('okok'))
 
-    def c(self):
+    def test_c(self):
         f = File()
         s = Shelf(f)
         f.seek(0)
@@ -40,19 +40,14 @@ class ShelfTest (UTest):
         f.seek(0)
         q = Shelf(f)
 
-    def d(self):
+    def test_d(self):
         s = BytesIO(as_bytes('nope'))
         assert raises(AssertionError, Shelf, s, readonly=True)
         s = BytesIO(as_bytes("SHELF-1\nbogus"))
         assert raises(ShortRead, Shelf, s, readonly=True)
 
-    def e(self):
+    def test_e(self):
         f = File()
         n1 = int8_to_str(0)
         n2 = int8_to_str(1)
         s = Shelf(f, items=[(n1, 'record1'), (n2, 'record2')])
-
-
-if __name__ == '__main__':
-    ShelfTest()
-

@@ -5,8 +5,9 @@ $Id$
 In Durus names, 'int4' is an unsigned 32-bit whole number,
 and 'int8' is an unsigned 64-bit whole number.
 """
-from struct import pack, unpack
 import sys
+from struct import pack, unpack
+from functools import partial
 
 def str_to_int8(s):
     return unpack(">Q", s)[0]
@@ -20,8 +21,20 @@ def int4_to_str(v):
 def str_to_int4(v):
     return unpack(">L", v)[0]
 
+IS_PYPY = hasattr(sys, 'pypy_version_info')
 
-if sys.version < "3":
+try:
+    if not IS_PYPY:
+        from zodbpickle.fastpickle import dumps, loads, Unpickler, Pickler
+    else:
+        from zodbpickle.slowpickle import dumps, loads, Unpickler, Pickler
+    BEST_COMMON_PROTOCOL = 3
+    _have_pickle = True
+except ImportError:
+    BEST_COMMON_PROTOCOL = 2
+    _have_pickle = False
+
+if sys.version_info[0] < 3:
     from __builtin__ import xrange
     from __builtin__ import str as byte_string
     def iteritems(x):
@@ -29,7 +42,11 @@ if sys.version < "3":
     def next(x):
         return x.next()
     from cStringIO import StringIO as BytesIO
-    from cPickle import dumps, loads, Unpickler, Pickler
+    if not _have_pickle:
+        if not IS_PYPY:
+            from cPickle import dumps, loads, Unpickler, Pickler
+        else:
+            from pickle import dumps, loads, Unpickler, Pickler
 else:
     xrange = range
     from builtins import next, bytearray, bytes
@@ -37,7 +54,14 @@ else:
     def iteritems(x):
         return x.items()
     from io import BytesIO
-    from pickle import dumps, loads, Unpickler, Pickler
+    if not _have_pickle:
+        from pickle import dumps, loads, Unpickler, Pickler
+    # define a default error handler for python 3.
+    # this will only work with zodbpickle, but does not harm.
+    loads = partial(loads, errors='bytes')
+    Unpickler = partial(Unpickler, errors='bytes')
+
+del _have_pickle
 
 _used = [dumps, loads, Unpickler, Pickler, next]  # to quiet code checker.
 

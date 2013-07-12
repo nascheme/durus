@@ -5,21 +5,21 @@ $Id$
 from durus.connection import Connection
 from durus.persistent_dict import PersistentDict
 from durus.storage import MemoryStorage
-from sancho.utest import UTest, raises
+from pytest import raises
 
-class PersistentDictTest (UTest):
+class TestPersistentDict(object):
 
-    def no_arbitrary_attributes(self):
+    def test_no_arbitrary_attributes(self):
         pd = PersistentDict()
         raises(AttributeError, setattr, pd, 'bogus', 1)
 
-    def nonzero(self):
+    def test_nonzero(self):
         pd = PersistentDict()
         assert not pd
         pd['1'] = 1
         assert pd
 
-    def setdefault(self):
+    def test_setdefault(self):
         pd = PersistentDict()
         assert pd.setdefault('1', []) == []
         assert pd['1'] == []
@@ -30,43 +30,43 @@ class PersistentDictTest (UTest):
         pd.setdefault('1', 1).append(2)
         assert pd['1'] == [1, 2]
 
-    def iter(self):
+    def test_iter(self):
         pd = PersistentDict()
         assert list(pd) == []
         pd[1] = 2
         assert list(pd) == [1]
 
-    def insert_again(self):
+    def test_insert_again(self):
         pd = PersistentDict()
         pd[1] = 2
         pd[1] = 3
         assert pd[1] == 3
         assert list(pd) == [1], list(pd)
 
-    def get(self):
+    def test_get(self):
         pd = PersistentDict((x, True) for x in range(10))
         assert pd.get(2) == True
         assert pd.get(-1) == None
         assert pd.get(-1, 5) == 5
 
-    def contains(self):
+    def test_contains(self):
         pd = PersistentDict((x, True) for x in range(10))
         assert 2 in pd
         assert -1 not in pd
 
-    def has_key(self):
+    def test_has_key(self):
         pd = PersistentDict((x, True) for x in range(10))
         assert pd.has_key(2)
         assert not pd.has_key(-1)
 
-    def clear(self):
+    def test_clear(self):
         pd = PersistentDict((x, True) for x in range(10))
         assert pd.has_key(2)
         pd.clear()
         assert not pd.has_key(2)
         assert list(pd.keys()) == []
 
-    def update(self):
+    def test_update(self):
         pd = PersistentDict()
         pd.update()
         raises(TypeError, pd.update, {}, {})
@@ -93,13 +93,13 @@ class PersistentDictTest (UTest):
         pd.update(keyed())
         assert pd['a'] == 3
 
-    def cmp(self):
+    def test_cmp(self):
         pd = PersistentDict((x, True) for x in range(10))
         pd2 = PersistentDict((x, True) for x in range(10))
         assert pd == pd2
         assert dict(pd) == dict(pd2)
 
-    def delete(self):
+    def test_delete(self):
         connection = Connection(MemoryStorage())
         pd = PersistentDict((x, True) for x in range(10))
         connection.root['x'] = pd
@@ -107,7 +107,7 @@ class PersistentDictTest (UTest):
         del pd[1]
         assert pd._p_is_unsaved()
 
-    def copy(self):
+    def test_copy(self):
         connection = Connection(MemoryStorage())
         pd = PersistentDict((x, True) for x in range(10))
         pd2 = pd.copy()
@@ -115,22 +115,21 @@ class PersistentDictTest (UTest):
         pd[1] = 34
         assert pd != pd2
 
-    def iter(self):
+    def test_iter(self):
         pd = PersistentDict((x, True) for x in range(10))
-        assert list(pd.iteritems()) == list(zip(pd.iterkeys(), pd.itervalues()))
+        if hasattr({}, 'iteritems'):
+            assert list(pd.iteritems()) == list(zip(pd.iterkeys(), pd.itervalues()))
+        else:
+            assert list(pd.items()) == list(zip(pd.keys(), pd.values()))
         assert list(pd.items()) == list(zip(pd.keys(), pd.values()))
 
-    def pops(self):
+    def test_pops(self):
         pd = PersistentDict((x, True) for x in range(10))
         pd.pop(3)
         assert 3 not in pd
         assert type(pd.popitem()) is tuple
 
-    def fromkeys(self):
+    def test_fromkeys(self):
         x = PersistentDict.fromkeys(dict(a=2), value=4)
         assert isinstance(x, PersistentDict)
         assert dict(x) == dict(a=4)
-
-
-if __name__ == '__main__':
-    PersistentDictTest()

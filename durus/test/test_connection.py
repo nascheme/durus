@@ -15,17 +15,18 @@ from durus.storage_server import wait_for_server
 from durus.utils import int8_to_str, as_bytes, next
 from os import unlink, devnull
 from os.path import exists
-from sancho.utest import UTest, raises
+from pytest import raises
+import pytest
 from subprocess import Popen
 from tempfile import mktemp
 import sys
 
-class TestConnection (UTest):
+class TestConnection (object):
 
     def _get_storage(self):
         return MemoryStorage()
 
-    def check_connection(self):
+    def test_connection(self):
         self.conn=conn=Connection(self._get_storage())
         self.root=root=conn.get_root()
         assert root._p_is_ghost() == False
@@ -57,7 +58,7 @@ class TestConnection (UTest):
         root['b'].b = 'b'
         del conn
 
-    def check_shrink(self):
+    def test_shrink(self):
         storage = self._get_storage()
         self.conn=conn=Connection(storage, cache_size=3)
         self.root=root=conn.get_root()
@@ -79,7 +80,7 @@ class TestConnection (UTest):
         conn.commit()
         conn.pack()
 
-    def check_storage_tools(self):
+    def test_storage_tools(self):
         connection = Connection(self._get_storage())
         root = connection.get_root()
         root['a'] = Persistent()
@@ -107,7 +108,7 @@ class TestConnection (UTest):
         g = s.gen_oid_record()
         raises(NotImplementedError, next, g)
 
-    def check_touch_every_reference(self):
+    def test_touch_every_reference(self):
         connection = Connection(self._get_storage())
         root = connection.get_root()
         root['a'] = Persistent()
@@ -121,7 +122,7 @@ class TestConnection (UTest):
         assert not root._p_is_unsaved()
         assert len(list(connection.get_cache())) == 4
 
-    def check_alternative_root(self):
+    def test_alternative_root(self):
         connection = Connection(self._get_storage(), root_class=Persistent)
         root = connection.get_root()
         assert isinstance(root, Persistent)
@@ -134,7 +135,7 @@ class TestConnectionClientStorage (TestConnection):
     def _get_storage(self):
         return ClientStorage(port=self.port)
 
-    def _pre(self):
+    def setup(self):
         self.port = 9123
         self.filename = mktemp()
         cmd = [sys.executable, __main__.__file__,
@@ -144,7 +145,7 @@ class TestConnectionClientStorage (TestConnection):
         x = Popen(cmd, stdout=output, stderr=output)
         wait_for_server(address=self.address, sleeptime=1)
 
-    def _post(self):
+    def teardown(self):
         __main__.stop_durus(("localhost", self.port))
         if exists(self.filename):
             unlink(self.filename)
@@ -152,7 +153,7 @@ class TestConnectionClientStorage (TestConnection):
         if exists(pack_name):
             unlink(pack_name)
 
-    def check_conflict(self):
+    def test_conflict(self):
         b = Connection(self._get_storage())
         c = Connection(self._get_storage())
         rootb = b.get(int8_to_str(0))
@@ -170,7 +171,7 @@ class TestConnectionClientStorage (TestConnection):
         c.commit()
         rootb['d']
 
-    def check_fine_conflict(self):
+    def test_fine_conflict(self):
         c1 = Connection(self._get_storage())
         c2 = Connection(self._get_storage())
         c1.get_root()['A'] = Persistent()
@@ -208,7 +209,7 @@ class TestConnectionClientStorage (TestConnection):
         # cache reference to be weak.
         return c1, c2
 
-    def conflict_from_invalid_removable_previously_accessed(self):
+    def test_conflict_from_invalid_removable_previously_accessed(self):
         c1, c2 = self._scenario()
         A = c1.get_root()['A']
         A.a # access A in c1.  This will lead to conflict.
@@ -223,7 +224,7 @@ class TestConnectionClientStorage (TestConnection):
         # Conflict because A has been accessed in c1, but it is invalid.
         assert raises(ConflictError, c1.commit)
 
-    def no_conflict_from_invalid_removable_not_previously_accessed(self):
+    def test_no_conflict_from_invalid_removable_not_previously_accessed(self):
         c1, c2 = self._scenario()
         c1.get_root()._p_set_status_ghost()
         # Commit a new A in c2.
@@ -234,7 +235,7 @@ class TestConnectionClientStorage (TestConnection):
         # so there is no conflict.
         c1.commit()
 
-    def check_persistentbase_refs(self):
+    def test_persistentbase_refs(self):
         refs = getattr(sys, 'gettotalrefcount', None)
         if refs is None:
             return
@@ -245,7 +246,7 @@ class TestConnectionClientStorage (TestConnection):
         after = refs()
         assert after - before == 0, after - before
 
-    def check_connectionbase_refs(self):
+    def test_connectionbase_refs(self):
         refs = getattr(sys, 'gettotalrefcount', None)
         if refs is None:
             return
@@ -256,9 +257,9 @@ class TestConnectionClientStorage (TestConnection):
         after = refs()
         assert after - before == 0, after - before
 
-class TestObjectDictionary (UTest):
+class TestObjectDictionary (object):
 
-    def a(self):
+    def test_a(self):
         d = ObjectDictionary()
         assert len(d) == 0
         key = 'ok'
@@ -274,7 +275,7 @@ class TestObjectDictionary (UTest):
         assert d.get(key) is None
         assert list(d) == []
 
-    def b(self):
+    def test_b(self):
         d = ObjectDictionary()
         assert len(d) == 0
         key = 'ok'
@@ -289,7 +290,7 @@ class TestObjectDictionary (UTest):
         assert d.get(key) is None
         assert list(d) == []
 
-    def call_callback(self):
+    def test_call_callback(self):
         d = ObjectDictionary()
         assert len(d) == 0
         key = 'ok'
@@ -299,8 +300,3 @@ class TestObjectDictionary (UTest):
         d.callback(x)
         assert key in d.dead
         assert key in d.mapping
-
-if __name__ == "__main__":
-    TestConnection()
-    TestConnectionClientStorage()
-    TestObjectDictionary()

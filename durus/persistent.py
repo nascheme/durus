@@ -4,6 +4,7 @@ $Id$
 """
 from durus.utils import str_to_int8, iteritems, as_bytes
 from sys import stderr
+from durus.utils import IS_PYPY
 
 # these must match the constants in _persistent.c
 UNSAVED = 1
@@ -12,6 +13,9 @@ GHOST = -1
 
 
 try:
+    if IS_PYPY:
+        # the current call of C extensions is much slower
+        raise ImportError
     from durus._persistent import PersistentBase, ConnectionBase
     from durus._persistent import _setattribute, _delattribute
     from durus._persistent import _getattribute, _hasattribute
@@ -113,7 +117,8 @@ except ImportError:
 
         def __setattr__(self, name, value):
             if name[:3] != '_p_' and name not in _GHOST_SAFE_ATTRIBUTES:
-                self._p_note_change()
+                if self._p_status != UNSAVED:
+                    self._p_note_change()
             _setattribute(self, name, value)
 
     def call_if_persistent(f, x):
@@ -127,7 +132,12 @@ class PersistentObject (PersistentBase):
     """
     All Durus persistent objects should inherit from this class.
     """
-    __slots__ = ['__weakref__']
+    if IS_PYPY:
+        # weakref is different and already defined in PyPy
+        # PyPy Issue1269
+        __slots__ = []
+    else:
+        __slots__ = ['__weakref__']
 
     def _p_gen_data_slots(self):
         """Generate the sequence of names of data slots that have values.

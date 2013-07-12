@@ -6,12 +6,12 @@ from durus.file import File
 from durus.utils import as_bytes
 from os import unlink
 from os.path import exists
-from sancho.utest import UTest, raises
+from pytest import raises
 from tempfile import mktemp
 
-class FileTest (UTest):
+class TestFile(object):
 
-    def a(self):
+    def test_a(self):
         f = File()
         f.rename(f.get_name())
         assert f.is_temporary()
@@ -49,7 +49,7 @@ class FileTest (UTest):
         h.close()
         unlink(g.get_name())
 
-    def b(self):
+    def test_b(self):
         name = mktemp()
         raises(OSError, File, name, readonly=True)
         g = File(name, readonly=False)
@@ -61,7 +61,7 @@ class FileTest (UTest):
         f.close()
         unlink(name)
 
-    def c(self):
+    def test_c(self):
         name = mktemp()
         name2 = mktemp()
         f = File(name)
@@ -73,7 +73,3 @@ class FileTest (UTest):
         assert not exists(name)
         f.close()
         unlink(name2)
-
-if __name__ == '__main__':
-    FileTest()
-
