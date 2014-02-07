@@ -13,6 +13,14 @@ class PersistentSet (PersistentObject):
     def __init__(self, *args):
         self.s = set(*args)
 
+    def __repr__(self):
+        if self._p_oid is None:
+            identifier = '@%x' % id(self)
+        else:
+            identifier = self._p_format_oid()
+        return "<%s %s %r>" % (self.__class__.__name__, identifier,
+                               list(self.s))
+
     def __and__(self, other):
         if isinstance(other, PersistentSet):
             return self.__class__(self.s & other.s)
@@ -144,14 +152,36 @@ class PersistentSet (PersistentObject):
         self._p_note_change()
         self.s.remove(item)
 
-    difference = __sub__
-    difference_update = __isub__
-    intersection = __and__
-    intersection_update = __iand__
-    issubset = __le__
-    issuperset = __ge__
-    symmetric_difference = __xor__
-    symmetric_difference_update = __ixor__
-    union = __or__
-    update = __ior__
+    def difference(self, other):
+        return self.__class__(self.s.difference(other))
 
+    def difference_update(self, other):
+        self._p_note_change()
+        return self.s.difference_update(other)
+
+    def intersection(self, other):
+        return self.__class__(self.s.intersection(other))
+
+    def intersection_update(self, other):
+        self._p_note_change()
+        return self.s.intersection_update(other)
+
+    def issubset(self, other):
+        return self.s.issubset(other)
+
+    def issuperset(self, other):
+        return self.s.issuperset(other)
+
+    def symmetric_difference(self, other):
+        return self.__class__(self.s.symmetric_difference(other))
+
+    def symmetric_difference_update(self, other):
+        self._p_note_change()
+        return self.s.symmetric_difference_update(other)
+
+    def union(self, other):
+        return self.__class__(self.s.union(other))
+
+    def update(self, other):
+        self._p_note_change()
+        return self.s.update(other)
