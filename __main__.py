@@ -115,6 +115,12 @@ def client_main():
 
 def get_storage(file, repair, readonly):
     if file:
+        fp = open(file, 'rb')
+        d = fp.read(10)
+        fp.close()
+        if d.startswith('DFS20'):
+            from durus.file_storage2 import FileStorage2
+            return FileStorage2(file, repair=repair, readonly=readonly)
         return FileStorage(file, repair=repair, readonly=readonly)
     else:
         return TempFileStorage()
