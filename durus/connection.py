@@ -438,7 +438,8 @@ class Cache (object):
         """(transaction_serial:int) -> [(serial, oid)]
         """
         all = self.objects
-        heap_size_target = (len(all) - self.size) * 2
+        n = len(all)
+        heap_size_target = max(min(self.size - n, n // 4), n // 64)
         start = self.finger % len(all)
         heap = []
         for oid in islice(chain(all, all), start, start + len(all)):
