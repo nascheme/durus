@@ -3,6 +3,7 @@ $URL: svn+ssh://svn.mems-exchange.org/repos/trunk/durus/file_storage.py $
 $Id: file_storage.py 31299 2008-11-19 19:52:31Z dbinger $
 """
 from datetime import datetime
+import collections
 from durus.file import File
 from durus.logger import log, is_logging
 from durus.serialize import unpack_record, split_oids
@@ -196,17 +197,33 @@ class FileStorage2(Storage):
             packed.seek(0)
             packed.truncate()
         self._write_header(packed)
-        def gen_reachable_records():
-            ROOT_OID = durus.connection.ROOT_OID
-            for oid, record in self.gen_oid_record(start_oid=ROOT_OID):
-                yield oid, record
-            while self.pack_extra:
-                oid = self.pack_extra.pop()
-                yield oid, self.load(oid)
+        # find all reachable objects.  Note that when we yield, new
+        # commits may happen and pack_extra will contain new or modified
+        # OIDs.
         index = {}
+        def gen_reachable_records():
+            pack_todo = collections.deque([durus.connection.ROOT_OID])
+            while pack_todo or self.pack_extra:
+                if self.pack_extra:
+                    oid = self.pack_extra.pop()
+                    # note we don't check 'index' because it could be an
+                    # object that got updated since the pack began and in
+                    # that case we have to write the new record to the pack
+                    # file
+                else:
+                    oid = pack_todo.pop()
+                    if oid in index:
+                        # we already wrote this object record
+                        continue
+                record = self.load(oid)
+                oid2, data, refdata = unpack_record(record)
+                assert oid == oid2
+                # ensure we have records for objects referenced
+                pack_todo.extend(split_oids(refdata))
+                yield (oid, record)
         for z in self._write_transaction(
             packed, gen_reachable_records(), index):
-            yield None
+            yield None # incremental pack, allow clients to be served
         self._write_index(packed, index)
         packed.flush()
         packed.fsync()

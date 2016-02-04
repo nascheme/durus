@@ -113,7 +113,7 @@ def client_main():
                        options.cache_size, options.readonly, options.repair,
                        options.startup)
 
-def get_storage(file, repair, readonly):
+def get_storage(file, repair=False, readonly=False):
     if file:
         fp = open(file, 'rb')
         d = fp.read(10)
