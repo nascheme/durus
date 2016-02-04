@@ -295,3 +295,15 @@ class FileStorage2(Storage):
         fp.seek(len(self.MAGIC))
         write_int8(fp, index_offset)
         assert fp.tell() == len(self.MAGIC) + 8
+
+    def create_from_records(self, oid_records):
+        assert not self.fp.is_readonly()
+        self.fp.seek(0)
+        self.fp.truncate()
+        self._write_header(self.fp)
+        index = {}
+        for z in self._write_transaction(self.fp, oid_records, index):
+            pass
+        self._write_index(self.fp, index)
+        self.fp.flush()
+        self.fp.fsync()
