@@ -121,7 +121,7 @@ class ObjectWriter (object):
             state = pickled_state
         data = pickled_type + state
         self.refs.discard(obj._p_oid)
-        return data, join_bytes(self.refs)
+        return data, join_bytes(sorted(self.refs))
 
 
 

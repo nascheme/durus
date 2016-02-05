@@ -2,7 +2,7 @@
 $URL$
 $Id$
 """
-from collections import deque
+import heapq
 from durus.serialize import unpack_record, split_oids, extract_class_name
 from durus.utils import int8_to_str
 import durus.connection
@@ -88,12 +88,12 @@ class Storage (object):
         """
         if start_oid is None:
             start_oid = durus.connection.ROOT_OID
-        todo = deque([start_oid])
+        todo = [start_oid]
         seen = set()
         while todo:
             batch = []
             while todo and len(batch) < batch_size:
-                oid = todo.popleft()
+                oid = heapq.heappop(todo)
                 if oid not in seen:
                     batch.append(oid)
                     seen.add(oid)
@@ -102,7 +102,7 @@ class Storage (object):
                 yield oid, record
                 for ref in split_oids(refdata):
                     if ref not in seen:
-                        todo.append(ref)
+                        heapq.heappush(todo, ref)
 
 
 def gen_referring_oid_record(storage, referred_oid):

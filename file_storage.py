@@ -3,6 +3,7 @@ $URL$
 $Id$
 """
 from datetime import datetime
+import heapq
 from durus.error import DurusKeyError
 from durus.file import File
 from durus.logger import log, is_logging
@@ -104,14 +105,15 @@ class FileStorage (Storage):
             if seen is None:
                 seen = IntSet() # This eventually contains them all.
             while todo:
-                oid = todo.pop()
+                oid = heapq.heappop(todo)
                 if str_to_int8(oid) in seen:
                     continue
                 seen.add(str_to_int8(oid))
                 record = self.load(oid)
                 record_oid, data, refdata = unpack_record(record)
                 assert oid == record_oid
-                todo.extend(split_oids(refdata))
+                for ref_oid in split_oids(refdata):
+                    heapq.heappush(todo, ref_oid)
                 yield oid, record
 
     def new_oid(self):

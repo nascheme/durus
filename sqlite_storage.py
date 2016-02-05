@@ -219,7 +219,7 @@ class SqliteStorage(Storage):
                     # that case we have to write the new record to the pack
                     # file
                 else:
-                    oid = pack_todo.pop()
+                    oid = pack_todo.popleft()
                     if oid in alive:
                         continue
                 alive.add(oid)

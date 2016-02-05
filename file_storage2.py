@@ -3,7 +3,7 @@ $URL: svn+ssh://svn.mems-exchange.org/repos/trunk/durus/file_storage.py $
 $Id: file_storage.py 31299 2008-11-19 19:52:31Z dbinger $
 """
 from datetime import datetime
-import collections
+import heapq
 from durus.file import File
 from durus.logger import log, is_logging
 from durus.serialize import unpack_record, split_oids
@@ -202,7 +202,7 @@ class FileStorage2(Storage):
         # OIDs.
         index = {}
         def gen_reachable_records():
-            pack_todo = collections.deque([durus.connection.ROOT_OID])
+            pack_todo = [durus.connection.ROOT_OID]
             while pack_todo or self.pack_extra:
                 if self.pack_extra:
                     oid = self.pack_extra.pop()
@@ -211,7 +211,7 @@ class FileStorage2(Storage):
                     # that case we have to write the new record to the pack
                     # file
                 else:
-                    oid = pack_todo.pop()
+                    oid = heapq.heappop(pack_todo)
                     if oid in index:
                         # we already wrote this object record
                         continue
@@ -219,7 +219,8 @@ class FileStorage2(Storage):
                 oid2, data, refdata = unpack_record(record)
                 assert oid == oid2
                 # ensure we have records for objects referenced
-                pack_todo.extend(split_oids(refdata))
+                for ref_oid in split_oids(refdata):
+                    heapq.heappush(pack_todo, ref_oid)
                 yield (oid, record)
         for z in self._write_transaction(
             packed, gen_reachable_records(), index):
