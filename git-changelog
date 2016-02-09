@@ -1,0 +1,52 @@
+#!/usr/bin/env python
+#
+# Generate changelog from git history, uses tags.
+import sys
+import os
+import subprocess
+import re
+
+def run(*args):
+    p = subprocess.Popen(args, stdout=subprocess.PIPE)
+    return p.communicate()[0]
+
+PAT = re.compile(r'(.*)([ab]\d+)$')
+
+def rev_sort_key(rev):
+    m = PAT.match(rev)
+    if m:
+        return m.group(1), m.group(2)
+    else:
+        return rev, 'c1'
+
+def main():
+    revs = run("git", "tag")
+    revs = [r for r in revs.split() if r.startswith('v')]
+    #print 'revs', sorted(revs, key=rev_sort_key)
+    revs.sort(key=rev_sort_key)
+    revs.reverse()
+    if run("git", "--no-pager", "log", "%s..HEAD" % revs[0]).strip():
+        revs.insert(0, 'HEAD')
+    revs.append('')
+    print 'Summary of changes'
+    print '=================='
+    for i, rev in enumerate(revs[:-1]):
+        print
+        print rev
+        print '-' * len(rev)
+        print
+        sys.stdout.flush()
+        prevref = revs[i+1]
+        if prevref:
+            revspec = "%s..%s" % (prevref, rev)
+        else:
+            revspec = rev
+        #print 'revspec', revspec
+        output = run("git", "--no-pager", "log", revspec)
+        for line in output.split('\n'):
+            if line.startswith('commit '):
+                continue
+            sys.stdout.write(line + '\n')
+
+if __name__ == '__main__':
+    main()
