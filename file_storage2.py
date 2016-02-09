@@ -75,15 +75,22 @@ class FileStorage2(Storage):
 
     _PACK_INCREMENT = 20 # number of records to pack before yielding
 
-    def __init__(self, filename=None, readonly=False, repair=False):
-        """(filename:str=None, readonly:bool=False, repair:bool=False)
-        If filename is empty (or None), a temporary file will be used.
+    def __init__(self, file=None, readonly=False, repair=False):
+        """(file:str=None, readonly:bool=False, repair:bool=False)
+        If file is empty (or None), a temporary file will be used.
         """
         self.oid = -1
-        self.fp = File(filename, readonly=readonly)
+        if file is None:
+            file = File()
+            assert not readonly
+            assert not repair
+        elif not hasattr(file, 'seek'):
+            file = File(file, readonly=readonly)
+        if not readonly:
+            file.obtain_lock()
+        self.fp = file
         self.pending_records = {}
         self.pack_extra = None
-
         self.fp.seek(0, 2)
         if self.fp.tell() != 0:
             assert self.has_format(self.fp)

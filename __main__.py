@@ -6,7 +6,6 @@ $Id$
 from code import InteractiveConsole
 from durus.client_storage import ClientStorage
 from durus.connection import Connection
-from durus.file_storage import FileStorage, TempFileStorage
 from durus.logger import log, logger, direct_output
 from durus.storage_server import DEFAULT_PORT, DEFAULT_HOST, DEFAULT_GCBYTES
 from durus.storage_server import SocketAddress
@@ -37,9 +36,10 @@ def configure_readline(namespace, history_path):
 
 
 def interactive_client(file, address, cache_size, readonly, repair,
-                       startup):
+                       startup, storage_class=None):
     if file:
-        storage = get_storage(file, readonly, repair)
+        storage = get_storage(file, storage_class=storage_class,
+                readonly=readonly, repair=repair)
         description = file
     else:
         socket_address = SocketAddress.new(address)
@@ -88,6 +88,9 @@ def client_main():
             "If given, this is the path to a Unix domain socket for "
             "the server."))
     parser.add_option(
+        '--storage-class', dest='storage', default=None,
+        help='Storage class (e.g. durus.file_storage.FileStorage).')
+    parser.add_option(
         '--cache_size', dest="cache_size", default=10000, type="int",
         help="Size of client cache (default=10000)")
     parser.add_option(
@@ -112,22 +115,45 @@ def client_main():
         address = options.address
     interactive_client(options.file, address,
                        options.cache_size, options.readonly, options.repair,
-                       options.startup)
+                       options.startup, options.storage)
 
-def get_storage(file, repair=False, readonly=False):
-    if file:
-        fp = open(file, 'rb')
-        d = fp.read(40)
-        fp.close()
-        if d.startswith('DFS20'):
-            from durus.file_storage2 import FileStorage2
-            return FileStorage2(file, repair=repair, readonly=readonly)
-        elif d.startswith('SQLite format '):
-            from durus.sqlite_storage import SqliteStorage
-            return SqliteStorage(file, repair=repair, readonly=readonly)
-        return FileStorage(file, repair=repair, readonly=readonly)
+def get_storage_class(file):
+    """Return the corresponding storage class based on an existing file.
+    """
+    if not os.path.exists(file):
+        from durus.file_storage import FileStorage
+        return FileStorage
+    fp = open(file, 'rb')
+    d = fp.read(20)
+    fp.close()
+    if d.startswith(b'DFS20'):
+        from durus.file_storage2 import FileStorage2
+        return FileStorage2
+    elif d.startswith(b'SQLite format '):
+        from durus.sqlite_storage import SqliteStorage
+        return SqliteStorage
+    elif d.startswith(b'SHELF-1'):
+        from durus.file_storage import FileStorage
+        return FileStorage
     else:
-        return TempFileStorage()
+        raise ValueError('unknown storage type for file')
+
+def import_class(name):
+    module_name, _, class_name = name.rpartition('.')
+    module = __import__(module_name, globals(), locals(), [class_name])
+    return getattr(module, class_name)
+
+def get_storage(file, storage_class=None, **kwargs):
+    if storage_class is not None:
+        storage_class = import_class(storage_class)
+    else:
+        if file is None:
+            from durus.file_storage import FileStorage
+            # passing file=None will create temporary storage
+            storage_class = FileStorage
+        else:
+            storage_class = get_storage_class(file)
+    return storage_class(file, **kwargs)
 
 def start_durus(logfile, logginglevel, address, storage, gcbytes):
     if logfile is None:
@@ -172,6 +198,9 @@ def run_durus_main():
     parser.add_option(
         '--host', dest='host', default=DEFAULT_HOST,
         help='Host to listen on. (default=%s)' % DEFAULT_HOST)
+    parser.add_option(
+        '--storage-class', dest='storage', default=None,
+        help='Storage class (e.g. durus.file_storage.FileStorage).')
     parser.add_option(
         '--gcbytes', dest='gcbytes', default=DEFAULT_GCBYTES, type='int',
         help=('Trigger garbage collection after this many commits. (default=%s)' %
@@ -219,10 +248,14 @@ def run_durus_main():
         address = SocketAddress.new(address=options.address,
             owner=options.owner, group=options.group, umask=options.umask)
     if not options.stop:
+        storage = get_storage(options.file,
+                storage_class=options.storage,
+                repair=options.repair,
+                readonly=options.readonly)
         start_durus(options.logfile,
                     options.logginglevel,
                     address,
-                    get_storage(options.file, options.repair, options.readonly),
+                    storage,
                     options.gcbytes)
     else:
         stop_durus(address)
