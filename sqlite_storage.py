@@ -52,14 +52,15 @@ class SqliteStorage(Storage):
     _PACK_INCREMENT = 100 # number of records to pack before yielding
 
     def __init__(self, filename, readonly=False, repair=False):
-        assert not readonly
+        if readonly:
+            raise NotImplementedError
         self.filename = filename
         if not os.path.exists(filename):
             self._init()
         else:
             self._conn = sqlite3.connect(filename)
             self._last_oid = self._get_last_oid()
-        self._conn.text_factory = str
+        self._conn.text_factory = bytes
         #self._conn.executescript(_PRAGMAS)
         self.pending_records = []
         self.pack_extra = None
