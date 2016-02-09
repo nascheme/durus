@@ -2,6 +2,7 @@
 $URL$
 $Id$
 """
+from durus.error import ReadConflictError
 from durus.connection import Connection
 from durus.file import File
 from durus.file_storage import TempFileStorage, FileStorage
@@ -134,7 +135,7 @@ class ShelfStorageTest (UTest):
         c.abort()
         assert c.get(deleted_oids[0])._p_is_ghost()
         assert c.get(deleted_oids[1])._p_is_ghost()
-        raises(KeyError, getattr, c.get(deleted_oids[0]), 'a')
+        raises(ReadConflictError, getattr, c.get(deleted_oids[0]), 'a')
         assert len([repr(oid) for oid, record in s.gen_oid_record()]) == 7
         c.commit()
         c.pack()
