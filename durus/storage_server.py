@@ -9,6 +9,7 @@ from durus.serialize import extract_class_name, split_oids
 from durus.utils import int4_to_str, str_to_int4, str_to_int8, read, write
 from durus.utils import read_int4, read_int4_str, write_int4_str
 from durus.utils import join_bytes, write_all, next, as_bytes
+from durus.systemd_socket import get_systemd_socket
 from os.path import exists
 from time import sleep
 import errno
@@ -52,6 +53,8 @@ class SocketAddress (object):
         elif isinstance(address, tuple):
             host, port = address
             return HostPortAddress(host=host, port=port)
+        elif address.startswith('@'):
+            return UnixAbstractAddress(address, **kwargs)
         else:
             return UnixDomainSocketAddress(address, **kwargs)
     new = staticmethod(new)
@@ -70,10 +73,16 @@ class HostPortAddress (SocketAddress):
         self.port = port
 
     def __str__(self):
-        return "%s:%s" % (self.host, self.port)
+        if ':' in self.host:
+            return "[%s]:%s" % (self.host, self.port)
+        else:
+            return "%s:%s" % (self.host, self.port)
 
     def get_address_family(self):
-        return socket.AF_INET
+        if ':' in self.host:
+            return socket.AF_INET6
+        else:
+            return socket.AF_INET
 
     def bind_socket(self, socket):
         socket.bind( (self.host, self.port))
@@ -99,7 +108,39 @@ class HostPortAddress (SocketAddress):
     def close(self, s):
         s.close()
 
-class UnixDomainSocketAddress (SocketAddress):
+class UnixAbstractAddress (SocketAddress):
+    def __init__(self, filename):
+        self.filename = filename.replace('@', '\0')
+
+    def __str__(self):
+        return self.filename.replace('\0', '@')
+
+    def get_address_family(self):
+        return socket.AF_UNIX
+
+    def bind_socket(self, s):
+        s.bind(self.filename)
+
+    def get_connected_socket(self):
+        sock = socket.socket(self.get_address_family(), socket.SOCK_STREAM)
+        try:
+            sock.connect(self.filename)
+        except socket.error:
+            exc = sys.exc_info()[1]
+            error = exc.args[0]
+            if error in (errno.ENOENT, errno.ENOTSOCK, errno.ECONNREFUSED):
+                return None
+            else:
+                raise
+        return sock
+
+    def set_connection_options(self, s):
+        s.settimeout(TIMEOUT)
+
+    def close(self, s):
+        s.close()
+
+class UnixDomainSocketAddress (UnixAbstractAddress):
 
     def __init__(self, filename, owner=None, group=None, umask=None):
         self.filename = filename
@@ -123,9 +164,6 @@ class UnixDomainSocketAddress (SocketAddress):
                owner,
                group)
         return result
-
-    def get_address_family(self):
-        return socket.AF_UNIX
 
     def bind_socket(self, s):
         if self.umask is not None:
@@ -165,27 +203,42 @@ class UnixDomainSocketAddress (SocketAddress):
         if self.umask is not None:
             umask(old_umask)
 
-    def get_connected_socket(self):
-        sock = socket.socket(self.get_address_family(), socket.SOCK_STREAM)
-        try:
-            sock.connect(self.filename)
-        except socket.error:
-            exc = sys.exc_info()[1]
-            error = exc.args[0]
-            if error in (errno.ENOENT, errno.ENOTSOCK, errno.ECONNREFUSED):
-                return None
-            else:
-                raise
-        return sock
-
-    def set_connection_options(self, s):
-        s.settimeout(TIMEOUT)
-
     def close(self, s):
         s.close()
         if exists(self.filename):
             unlink(self.filename)
 
+
+class InheritedSocket(SocketAddress):
+    def __init__(self, sock):
+        self.name = sock.getsockname()
+
+    def __str__(self):
+        if isinstance(self.name, bytes) and '\0' in self.name:
+            # Linux extension, abstract namespace
+            path = self.name.replace('\0', '@')
+            try:
+                path = path.decode(sys.getfilesystemencoding())
+            except:
+                pass
+            return path
+        elif isinstance(self.name, str):
+            return self.name
+        else:
+            addr = self.name[0]
+            port = self.name[1]
+            if ':' in addr:
+                return '[%s]:%s' % (addr, port)
+            else:
+                return '%s:%s' % (addr, port)
+
+    def set_connection_options(self, s):
+        if s.family in [socket.AF_INET, socket.AF_INET6]:
+            s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        s.settimeout(TIMEOUT)
+
+    def close(self, s):
+        s.close()
 
 class StorageServer (object):
 
@@ -204,7 +257,11 @@ class StorageServer (object):
         assert isinstance(gcbytes, (int, float))
 
     def serve(self):
-        sock = self.address.get_listening_socket()
+        sock = get_systemd_socket()
+        if sock is None:
+            sock = self.address.get_listening_socket()
+        else:
+            self.address = InheritedSocket(sock)
         log(20, 'Ready on %s', self.address)
         self.sockets.append(sock)
         try:
