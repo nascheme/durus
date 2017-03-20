@@ -209,7 +209,11 @@ class FileStorage2(Storage):
         # OIDs.
         index = {}
         def gen_reachable_records():
-            pack_todo = [durus.connection.ROOT_OID]
+            # we order the todo queue by file offset. The hope is that the
+            # packed file will be mostly the same as the old file in order
+            # to speed up the rsync delta process.
+            default_rank = 2**64
+            pack_todo = [(0, durus.connection.ROOT_OID)]
             while pack_todo or self.pack_extra:
                 if self.pack_extra:
                     oid = self.pack_extra.pop()
@@ -218,7 +222,7 @@ class FileStorage2(Storage):
                     # that case we have to write the new record to the pack
                     # file
                 else:
-                    oid = heapq.heappop(pack_todo)
+                    rank, oid = heapq.heappop(pack_todo)
                     if oid in index:
                         # we already wrote this object record
                         continue
@@ -227,7 +231,8 @@ class FileStorage2(Storage):
                 assert oid == oid2
                 # ensure we have records for objects referenced
                 for ref_oid in split_oids(refdata):
-                    heapq.heappush(pack_todo, ref_oid)
+                    item = (self.index.get(ref_oid, default_rank), ref_oid)
+                    heapq.heappush(pack_todo, item)
                 yield (oid, record)
         for z in self._write_transaction(
             packed, gen_reachable_records(), index):
