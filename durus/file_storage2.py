@@ -153,6 +153,9 @@ class FileStorage2(Storage):
             pass
         self.fp.flush()
         self.fp.fsync()
+        if is_logging(20):
+            log(20, "Transaction at [%s] end=%s" % (datetime.now(),
+                                                    self.fp.tell()))
         self.index.update(index)
         if self.pack_extra is not None:
             self.pack_extra.extend(index)
