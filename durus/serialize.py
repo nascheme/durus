@@ -68,13 +68,17 @@ class ObjectWriter (object):
     """
 
     def __init__(self, connection):
+        self._setup_pickler()
+        self.objects_found = []
+        self.refs = set() # populated by _persistent_id()
+        self.connection = connection
+
+    def _setup_pickler(self):
         self.sio = BytesIO()
         self.pickler = Pickler(self.sio, PICKLE_PROTOCOL)
         self.pickler.persistent_id = method(
             call_if_persistent, self._persistent_id)
-        self.objects_found = []
-        self.refs = set() # populated by _persistent_id()
-        self.connection = connection
+        self._num_bytes = 0 # number of bytes serialized by pickler
 
     def close(self):
         # see ObjectWriter.__doc__
@@ -105,9 +109,13 @@ class ObjectWriter (object):
             yield obj
 
     def get_state(self, obj):
-        self.sio.seek(0) # recycle BytesIO instance
-        self.sio.truncate()
-        self.pickler.clear_memo()
+        if self._num_bytes > 20000:
+            # clear_memo() gets slow when memo table is large
+            self._setup_pickler()
+        else:
+            self.sio.seek(0) # recycle BytesIO instance
+            self.sio.truncate()
+            self.pickler.clear_memo()
         self.pickler.dump(type(obj))
         self.refs.clear()
         position = self.sio.tell()
@@ -120,6 +128,7 @@ class ObjectWriter (object):
         else:
             state = pickled_state
         data = pickled_type + state
+        self._num_bytes += len(data)
         self.refs.discard(obj._p_oid)
         return data, join_bytes(sorted(self.refs))
 
