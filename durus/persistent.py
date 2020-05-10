@@ -95,10 +95,10 @@ except ImportError:
 
         def __new__(klass, *args, **kwargs):
             instance = object.__new__(klass)
-            instance._p_status = UNSAVED
-            instance._p_serial = 0
-            instance._p_connection = None
-            instance._p_oid = None
+            _setattribute(instance, '_p_status', UNSAVED)
+            _setattribute(instance, '_p_serial', 0)
+            _setattribute(instance, '_p_connection', None)
+            _setattribute(instance, '_p_oid', None)
             return instance
 
         def __getattribute__(self, name):
@@ -185,15 +185,15 @@ class PersistentObject (PersistentBase):
 
     def _p_set_status_ghost(self):
         self.__setstate__({})
-        self._p_status = GHOST
+        _setattribute(self, '_p_status', GHOST)
 
     def _p_set_status_saved(self):
-        self._p_status = SAVED
+        _setattribute(self, '_p_status', SAVED)
 
     def _p_set_status_unsaved(self):
         if self._p_status == GHOST:
             self._p_load_state()
-        self._p_status = UNSAVED
+        _setattribute(self, '_p_status', UNSAVED)
 
     def _p_is_ghost(self):
         return self._p_status == GHOST

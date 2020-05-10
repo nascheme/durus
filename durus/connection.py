@@ -16,6 +16,10 @@ from os import getpid
 from time import time
 from weakref import ref, KeyedRef
 import durus.storage
+try:
+    from durus._persistent import _setattribute
+except ImportError:
+    _setattribute = object.__setattr__
 
 ROOT_OID = int8_to_str(0)
 
@@ -201,7 +205,7 @@ class Connection (ConnectionBase):
     def note_access(self, obj):
         assert obj._p_connection is self
         assert obj._p_oid is not None
-        obj._p_serial = self.transaction_serial
+        _setattribute(obj, '_p_serial', self.transaction_serial)
         self.cache.recent_objects.add(obj)
 
     def note_change(self, obj):
@@ -415,9 +419,9 @@ class Cache (object):
         if obj is None or obj.__class__ is not klass:
             # Make a new ghost.
             obj = klass.__new__(klass)
-            obj._p_oid = oid
-            obj._p_connection = connection
-            obj._p_status = GHOST # obj._p_set_status_ghost()
+            _setattribute(obj, '_p_oid', oid)
+            _setattribute(obj, '_p_connection', connection)
+            _setattribute(obj, '_p_status', GHOST) # obj._p_set_status_ghost()
             objects[oid] = obj
         return obj
 
