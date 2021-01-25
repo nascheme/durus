@@ -21,12 +21,6 @@ was designed to be the storage component for the Python-powered web sites
 operated by the MEMS Exchange.  See `doc/README_CNRI.txt` for more
 details.
 
-CNRI continues to release their implementation of Durus as part of their
-DurusWorks package.  You may wish to examine that package to see which
-version best suits your purposes.  This package includes only the object
-database (without the web application framework) and some potentially useful
-extra features.
-
 Overview
 --------
 
