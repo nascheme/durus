@@ -1,13 +1,14 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Generate changelog from git history, uses tags.
+from __future__ import print_function
 import sys
 import os
 import subprocess
 import re
 
 def run(*args):
-    p = subprocess.Popen(args, stdout=subprocess.PIPE)
+    p = subprocess.Popen(args, stdout=subprocess.PIPE, encoding='utf-8')
     return p.communicate()[0]
 
 PAT = re.compile(r'(.*)([ab]\d+)$')
@@ -28,13 +29,13 @@ def main():
     if run("git", "--no-pager", "log", "%s..HEAD" % revs[0]).strip():
         revs.insert(0, 'HEAD')
     revs.append('')
-    print 'Summary of changes'
-    print '=================='
+    print('Summary of changes')
+    print('==================')
     for i, rev in enumerate(revs[:-1]):
-        print
-        print rev
-        print '-' * len(rev)
-        print
+        print()
+        print(rev)
+        print('-' * len(rev))
+        print()
         sys.stdout.flush()
         prevref = revs[i+1]
         if prevref:

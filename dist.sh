@@ -5,6 +5,6 @@ set -e
 TMP=$(mktemp -d --tmpdir=.)
 git archive master | tar -x -C $TMP
 ./git-changelog > $TMP/CHANGES.txt
-(cd $TMP && python setup.py sdist)
+(cd $TMP && python3 setup.py sdist)
 cp -v $TMP/dist/* dist
 rm -r $TMP
