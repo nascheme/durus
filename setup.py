@@ -33,4 +33,5 @@ setup(name = "Durus",
       url = "https://github.com/nascheme/durus",
       ext_modules = [persistent],
       license = "see LICENSE.txt",
+      zip_safe=False,
       )
