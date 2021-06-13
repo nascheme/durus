@@ -1,13 +1,7 @@
 from durus import __version__
-import re, sys, os
-assert sys.version >= "2.4"
+import sys, os
 
-try:
-    assert 'USE_DISTUTILS' not in os.environ
-    from setuptools import setup, Extension
-except (ImportError, AssertionError):
-    from distutils.core import setup
-    from distutils.extension import Extension
+from setuptools import setup, Extension
 
 if 'sdist' in sys.argv:
     if sys.platform == 'darwin':
