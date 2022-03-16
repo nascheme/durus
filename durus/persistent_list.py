@@ -2,9 +2,10 @@
 $URL$
 $Id$
 """
+import collections.abc
 from durus.persistent import PersistentObject
 
-class PersistentList (PersistentObject):
+class PersistentList (PersistentObject, collections.abc.MutableSequence):
     """
     Instance attributes:
       data : list

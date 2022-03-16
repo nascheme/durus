@@ -2,11 +2,12 @@
 $URL$
 $Id$
 """
+import collections.abc
 from copy import copy
 from durus.persistent import PersistentObject
 from durus.utils import iteritems
 
-class PersistentDict (PersistentObject):
+class PersistentDict (PersistentObject, collections.abc.MutableMapping):
     """
     Instance attributes:
       data : dict

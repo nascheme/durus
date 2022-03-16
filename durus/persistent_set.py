@@ -2,9 +2,10 @@
 $URL$
 $Id$
 """
+import collections.abc
 from durus.persistent import PersistentObject
 
-class PersistentSet (PersistentObject):
+class PersistentSet (PersistentObject, collections.abc.MutableSet):
 
     __slots__ = ['s']
 

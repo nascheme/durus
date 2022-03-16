@@ -2,6 +2,7 @@
 $URL$
 $Id$
 """
+import collections.abc
 from durus.persistent import PersistentObject
 
 class BNode (PersistentObject):
@@ -314,7 +315,7 @@ for bnode_class in [BNode] + BNode.__subclasses__():
 del bnode_class
 
 
-class BTree (PersistentObject):
+class BTree (PersistentObject, collections.abc.MutableMapping):
     """
     Instance attributes:
       root: BNode
