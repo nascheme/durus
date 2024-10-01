@@ -55,12 +55,20 @@ static void
 pb_dealloc(PersistentBaseObject *self) 
 {
 	PyObject_GC_UnTrack(self);
+#if PY_VERSION_HEX < 0x03080000
 	Py_TRASHCAN_SAFE_BEGIN(self);
+#else
+    Py_TRASHCAN_BEGIN(self, pb_dealloc);
+#endif
 	Py_XDECREF(self->p_connection);
 	Py_XDECREF(self->p_oid);
 	Py_XDECREF(self->p_serial);
 	PyObject_GC_Del(self);
+#if PY_VERSION_HEX < 0x03080000
 	Py_TRASHCAN_SAFE_END(self); 
+#else
+    Py_TRASHCAN_END;
+#endif
 }
 
 static int
@@ -286,10 +294,18 @@ static void
 cb_dealloc(ConnectionBaseObject *self) 
 {
 	PyObject_GC_UnTrack(self);
+#if PY_VERSION_HEX < 0x03080000
 	Py_TRASHCAN_SAFE_BEGIN(self);
+#else
+    Py_TRASHCAN_BEGIN(self, cb_dealloc);
+#endif
 	Py_XDECREF(self->transaction_serial);
 	PyObject_GC_Del(self);
-	Py_TRASHCAN_SAFE_END(self); 
+#if PY_VERSION_HEX < 0x03080000
+	Py_TRASHCAN_SAFE_END(self);
+#else
+    Py_TRASHCAN_END;
+#endif
 }
 
 static PyMemberDef cb_members[] = {
