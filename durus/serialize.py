@@ -62,6 +62,17 @@ else:
         return MethodType(a, b)
 
 
+class _PersistentPickler(Pickler):
+    def __init__(self, fp, proto, persistent_id):
+        Pickler.__init__(self, fp, proto)
+        self.persistent_id = method(call_if_persistent, persistent_id)
+
+
+class _PersistentUnpickler(Unpickler):
+    def __init__(self, fp, persistent_load):
+        Unpickler.__init__(self, fp)
+        self.persistent_load = persistent_load
+
 
 class ObjectWriter (object):
     """
@@ -80,9 +91,8 @@ class ObjectWriter (object):
 
     def _setup_pickler(self):
         self.sio = BytesIO()
-        self.pickler = Pickler(self.sio, PICKLE_PROTOCOL)
-        self.pickler.persistent_id = method(
-            call_if_persistent, self._persistent_id)
+        self.pickler = _PersistentPickler(self.sio, PICKLE_PROTOCOL,
+                                          self._persistent_id)
         self._num_bytes = 0 # number of bytes serialized by pickler
 
     def close(self):
@@ -149,11 +159,11 @@ class ObjectReader (object):
 
     def _get_unpickler(self, file):
         cache = self.connection.get_cache()
-        unpickler = Unpickler(file)
-        # This gets called often so using 'partial' gives a small speed boost
-        unpickler.persistent_load = functools.partial(persistent_load,
-                                                      self.connection,
-                                                      cache.objects)
+        # persistent_load() is called often so using 'partial' gives a small
+        # performance boost
+        load = functools.partial(persistent_load, self.connection,
+                                 cache.objects)
+        unpickler = _PersistentUnpickler(file, load)
         return unpickler
 
     def get_ghost(self, data):
