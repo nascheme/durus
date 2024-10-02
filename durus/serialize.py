@@ -2,13 +2,18 @@
 $URL$
 $Id$
 """
-from durus.persistent import call_if_persistent
+from durus.persistent import call_if_persistent, GHOST
 from durus.utils import int4_to_str, str_to_int4, join_bytes, BytesIO
 from durus.utils import Pickler, Unpickler, loads, dumps, as_bytes
+import functools
 from types import MethodType
 from zlib import compress, decompress, error as zlib_error
 import struct
 import sys
+try:
+    from durus._persistent import _setattribute
+except ImportError:
+    _setattribute = object.__setattr__
 
 WRITE_COMPRESSED_STATE_PICKLES = True
 PICKLE_PROTOCOL = 2
@@ -143,13 +148,12 @@ class ObjectReader (object):
         self.load_count = 0
 
     def _get_unpickler(self, file):
-        connection = self.connection
-        get_instance = connection.get_cache().get_instance
-        def persistent_load(oid_klass):
-            oid, klass = oid_klass
-            return get_instance(oid, klass, connection)
+        cache = self.connection.get_cache()
         unpickler = Unpickler(file)
-        unpickler.persistent_load = persistent_load
+        # This gets called often so using 'partial' gives a small speed boost
+        unpickler.persistent_load = functools.partial(persistent_load,
+                                                      self.connection,
+                                                      cache.objects)
         return unpickler
 
     def get_ghost(self, data):
@@ -185,3 +189,25 @@ class ObjectReader (object):
 
     def get_load_count(self):
         return self.load_count
+
+
+def persistent_load(connection, cache_objects, oid_class):
+    """
+    This returns the existing object with the given oid, or else it makes
+    a new one with the given class and connection.
+
+    This function is called when unpickling a reference, which may happen at
+    a high frequency, so it needs to be fast.  For the sake of speed, it
+    inlines some statements that would normally be executed through calling
+    other functions.
+    """
+    oid, klass = oid_class
+    obj = cache_objects.get(oid)
+    if obj is None or obj.__class__ is not klass:
+        # Make a new ghost.
+        obj = klass.__new__(klass)
+        _setattribute(obj, '_p_oid', oid)
+        _setattribute(obj, '_p_connection', connection)
+        _setattribute(obj, '_p_status', GHOST) # obj._p_set_status_ghost()
+        cache_objects[oid] = obj
+    return obj

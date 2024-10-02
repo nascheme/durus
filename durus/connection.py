@@ -5,10 +5,10 @@ $Id$
 from durus.error import ConflictError, WriteConflictError, ReadConflictError
 from durus.error import DurusKeyError
 from durus.logger import log
-from durus.persistent import ConnectionBase, GHOST
+from durus.persistent import ConnectionBase
 from durus.persistent_dict import PersistentDict
 from durus.serialize import ObjectReader, ObjectWriter
-from durus.serialize import unpack_record, pack_record
+from durus.serialize import unpack_record, pack_record, persistent_load
 from durus.utils import int8_to_str, iteritems, loads, byte_string, as_bytes
 from heapq import heappush, heappop
 from itertools import islice, chain
@@ -404,26 +404,7 @@ class Cache (object):
         self.size = size
 
     def get_instance(self, oid, klass, connection):
-        """
-        This returns the existing object with the given oid, or else it makes
-        a new one with the given class and connection.
-
-        This method is called when unpickling a reference, which may happen at
-        a high frequency, so it needs to be fast.  For the sake of speed, it
-        inlines some statements that would normally be executed through calling
-        other functions.
-        """
-        # if self.get(oid) is not None: return self.get(oid)
-        objects = self.objects
-        obj = objects.get(oid)
-        if obj is None or obj.__class__ is not klass:
-            # Make a new ghost.
-            obj = klass.__new__(klass)
-            _setattribute(obj, '_p_oid', oid)
-            _setattribute(obj, '_p_connection', connection)
-            _setattribute(obj, '_p_status', GHOST) # obj._p_set_status_ghost()
-            objects[oid] = obj
-        return obj
+        return persistent_load(connection, self.objects, (oid, klass))
 
     def get(self, oid):
         return self.objects.get(oid)
