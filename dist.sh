@@ -3,7 +3,7 @@
 # This ensures no spurious files or changes are included in package.
 set -e
 TMP=$(mktemp -d --tmpdir=.)
-git archive master | tar -x -C $TMP
+git archive main | tar -x -C $TMP
 ./git-changelog > $TMP/CHANGES.txt
 (cd $TMP && python3 setup.py sdist)
 cp -v $TMP/dist/* dist
