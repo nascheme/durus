@@ -13,7 +13,7 @@ $Id$
 #else
 	#define Integer_FromLong PyLong_FromLong
 	#define AttributeName_Check PyUnicode_Check
-	#define AttributeName_AsString _PyUnicode_AsString
+	#define AttributeName_AsString PyUnicode_AsUTF8
 #endif
 
 /* these constants must match the ones in persistent.py */
@@ -95,7 +95,7 @@ pb_clear(PersistentBaseObject *self)
  * "__repr__", "__class__", and "__setstate__" are also exempt. */
 
 static int
-load_triggering_name(char *s)
+load_triggering_name(const char *s)
 {
 	if (*s++ != '_')
 		return 1;
@@ -163,8 +163,7 @@ pb_note_access(PersistentBaseObject *self)
 static PyObject *
 pb_getattro(PersistentBaseObject *self, PyObject *name)
 {
-	char *sname;
-    sname = NULL;
+	const char *sname = NULL;
 	if (AttributeName_Check(name)) {
 	    sname = AttributeName_AsString(name);
 	} else {
@@ -183,8 +182,7 @@ pb_getattro(PersistentBaseObject *self, PyObject *name)
 static int
 pb_setattro(PersistentBaseObject *self, PyObject *name, PyObject *value)
 {
-	char *sname;
-    sname = NULL;
+	const char *sname = NULL;
 	if (AttributeName_Check(name)) {
 	    sname = AttributeName_AsString(name);
 	} else {
