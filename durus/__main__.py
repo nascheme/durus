@@ -244,7 +244,11 @@ def run_durus_main():
     (options, args) = parser.parse_args()
     if getattr(options, 'address', None) is None:
         address = SocketAddress.new((options.host, options.port))
+    elif options.address.startswith('@'):
+        # abstract unix socket
+        address = SocketAddress.new(address=options.address)
     else:
+        # unix socket
         address = SocketAddress.new(address=options.address,
             owner=options.owner, group=options.group, umask=options.umask)
     if not options.stop:
