@@ -24,15 +24,12 @@ class BNode (PersistentObject):
 
     def __iter__(self):
         if self.is_leaf():
-            for item in self.items:
-                yield item
+            yield from self.items
         else:
             for position, item in enumerate(self.items):
-                for it in self.nodes[position]:
-                    yield it
+                yield from self.nodes[position]
                 yield item
-            for it in self.nodes[-1]:
-                yield it
+            yield from self.nodes[-1]
 
     def __reversed__(self):
         if self.is_leaf():
