@@ -86,7 +86,7 @@ takes a storage instance as an argument.
 
 Example using FileStorage to open a Connection to a file:
 
-```
+```py
 from durus.file_storage import FileStorage
 from durus.connection import Connection
 connection = Connection(FileStorage("test.durus"))
@@ -94,7 +94,7 @@ connection = Connection(FileStorage("test.durus"))
 
 Example using ClientStorage to open a Connection to a Durus server:
 
-```
+```py
 from durus.client_storage import ClientStorage
 from durus.connection import Connection
 connection = Connection(ClientStorage())
@@ -129,7 +129,7 @@ commit a reference to x in some object that is already stored in the
 database.  The root object is always there, for example, so you can do
 something like this:
 
-```
+```py
 # Assume mymodule defines A as a subclass of Persistent.
 from mymodule import A 
 x = A()
