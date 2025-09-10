@@ -10,14 +10,16 @@ class BNode (PersistentObject):
     Instance attributes:
       items: list
       nodes: [BNode]
+      _len: int - cached count of items in this subtree
     """
-    __slots__ = ['items', 'nodes']
+    __slots__ = ['items', 'nodes', '_len']
 
     minimum_degree = 2 # a.k.a. t
 
     def __init__(self):
         self.items = []
         self.nodes = None
+        self._len = 0
 
     def is_leaf(self):
         return self.nodes is None
@@ -101,6 +103,7 @@ class BNode (PersistentObject):
             self._p_note_change()
         elif self.is_leaf():
             self.items.insert(position, item)
+            self._len += 1
             self._p_note_change()
         else:
             child = self.nodes[position]
@@ -112,9 +115,30 @@ class BNode (PersistentObject):
                 else:
                      if key > self.items[position][0]:
                          position += 1
+                     old_len = self.nodes[position]._len
                      self.nodes[position].insert_item(item)
+                     self._len += self.nodes[position]._len - old_len
             else:
+                old_len = self.nodes[position]._len
                 self.nodes[position].insert_item(item)
+                self._len += self.nodes[position]._len - old_len
+
+    def _update_len(self):
+        """Update _len to match the actual item count."""
+        if self.is_leaf():
+            self._len = len(self.items)
+        else:
+            self._len = len(self.items)
+            for node in self.nodes:
+                self._len += node._len
+
+    def _change_len(self, delta):
+        """Update _len by delta."""
+        self._len += delta
+        return delta
+
+    def __len__(self):
+        return self._len
 
     def split_child(self, position, child):
         """(position:int, child:BNode)
@@ -135,6 +159,8 @@ class BNode (PersistentObject):
             assert len(bigger.nodes) == len(child.nodes)
         self.items.insert(position, splitting_key)
         self.nodes.insert(position + 1, bigger)
+        bigger._update_len()
+        child._len -= bigger._len + 1
         self._p_note_change()
 
     def get_min_item(self):
@@ -170,6 +196,7 @@ class BNode (PersistentObject):
             if matches:
                 # Case 1.
                 del self.items[p]
+                self._len -= 1
                 self._p_note_change()
             else:
                 raise KeyError(key)
@@ -183,11 +210,13 @@ class BNode (PersistentObject):
                     # Case 2a.
                     extreme = node.get_max_item()
                     node.delete(extreme[0])
+                    self._len -= 1
                     self.items[p] = extreme
                 elif is_big(upper_sibling):
                     # Case 2b.
                     extreme = upper_sibling.get_min_item()
                     upper_sibling.delete(extreme[0])
+                    self._len -= 1
                     self.items[p] = extreme
                 else:
                     # Case 2c.
@@ -196,6 +225,8 @@ class BNode (PersistentObject):
                     node.items = node.items + [extreme] + upper_sibling.items
                     if not node.is_leaf():
                         node.nodes = node.nodes + upper_sibling.nodes
+                    node._len += upper_sibling._len
+                    self._len -= 1
                     del self.items[p]
                     del self.nodes[p + 1]
                 self._p_note_change()
@@ -204,8 +235,10 @@ class BNode (PersistentObject):
                     if is_big(lower_sibling):
                         # Case 3a1: Shift an item from lower_sibling.
                         node.items.insert(0, self.items[p - 1])
+                        node._len += 1
                         self.items[p - 1] = lower_sibling.items[-1]
                         del lower_sibling.items[-1]
+                        lower_sibling._len -= 1
                         if not node.is_leaf():
                             node.nodes.insert(0, lower_sibling.nodes[-1])
                             del lower_sibling.nodes[-1]
@@ -213,8 +246,10 @@ class BNode (PersistentObject):
                     elif is_big(upper_sibling):
                         # Case 3a2: Shift an item from upper_sibling.
                         node.items.append(self.items[p])
+                        node._len += 1
                         self.items[p] = upper_sibling.items[0]
                         del upper_sibling.items[0]
+                        upper_sibling._len -= 1
                         if not node.is_leaf():
                             node.nodes.append(upper_sibling.nodes[0])
                             del upper_sibling.nodes[0]
@@ -225,6 +260,7 @@ class BNode (PersistentObject):
                                       node.items)
                         if not node.is_leaf():
                             node.nodes = lower_sibling.nodes + node.nodes
+                        node._len += lower_sibling._len + 1
                         del self.items[p-1]
                         del self.nodes[p-1]
                     else:
@@ -233,12 +269,15 @@ class BNode (PersistentObject):
                                       upper_sibling.items)
                         if not node.is_leaf():
                             node.nodes = node.nodes + upper_sibling.nodes
+                        node._len += upper_sibling._len + 1
                         del self.items[p]
                         del self.nodes[p+1]
                     self._p_note_change()
                     node._p_note_change()
                 assert is_big(node)
+                old_len = node._len
                 node.delete(key)
+                self._len += node._len - old_len
             if not self.items:
                 # This can happen when self is the root node.
                 self.items = self.nodes[0].items
@@ -420,6 +459,7 @@ class BTree (PersistentObject, collections.abc.MutableMapping):
             # replace and split.
             node = self.root.__class__()
             node.nodes = [self.root]
+            node._len = self.root._len
             node.split_child(0, node.nodes[0])
             self.root = node
         self.root.insert_item((key, value))
@@ -438,8 +478,8 @@ class BTree (PersistentObject, collections.abc.MutableMapping):
 
     def __len__(self):
         """() -> int
-        Compute and return the total number of items."""
-        return self.root.get_count()
+        Return the total number of items (fast O(1) version)."""
+        return self.root._len
 
     def items_backward(self):
         """() -> generator
