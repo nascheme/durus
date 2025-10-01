@@ -160,12 +160,12 @@ class PersistentSet (PersistentObject, collections.abc.MutableSet):
         self._p_note_change()
         return self.s.difference_update(other)
 
-    def intersection(self, other):
-        return self.__class__(self.s.intersection(other))
+    def intersection(self, *others):
+        return self.__class__(self.s.intersection(*others))
 
-    def intersection_update(self, other):
+    def intersection_update(self, *others):
         self._p_note_change()
-        return self.s.intersection_update(other)
+        return self.s.intersection_update(*others)
 
     def issubset(self, other):
         return self.s.issubset(other)
@@ -173,16 +173,16 @@ class PersistentSet (PersistentObject, collections.abc.MutableSet):
     def issuperset(self, other):
         return self.s.issuperset(other)
 
-    def symmetric_difference(self, other):
-        return self.__class__(self.s.symmetric_difference(other))
+    def symmetric_difference(self, *others):
+        return self.__class__(self.s.symmetric_difference(*others))
 
     def symmetric_difference_update(self, other):
         self._p_note_change()
         return self.s.symmetric_difference_update(other)
 
-    def union(self, other):
-        return self.__class__(self.s.union(other))
+    def union(self, *others):
+        return self.__class__(self.s.union(*others))
 
-    def update(self, other):
+    def update(self, *others):
         self._p_note_change()
-        return self.s.update(other)
+        return self.s.update(*others)
