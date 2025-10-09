@@ -2,22 +2,42 @@
 $URL$
 $Id$
 """
+
 import collections.abc
 from durus.persistent import PersistentObject
 
-class BNode (PersistentObject):
+
+class _NullCount:
+    def __add__(self, other):
+        return self
+
+    def __sub__(self, other):
+        return self
+
+    def __radd__(self, other):
+        return self
+
+    def __rsub__(self, other):
+        return self
+
+
+class BNode(PersistentObject):
     """
     Instance attributes:
       items: list
       nodes: [BNode]
+      _count: int | _NullCount
     """
-    __slots__ = ['items', 'nodes']
-
     minimum_degree = 2 # a.k.a. t
+
+    # This exists for BNode instances stored before the additional of the
+    # _count instance attribute.
+    _count = _NullCount()
 
     def __init__(self):
         self.items = []
         self.nodes = None
+        self._count = 0
 
     def is_leaf(self):
         return self.nodes is None
@@ -101,20 +121,42 @@ class BNode (PersistentObject):
             self._p_note_change()
         elif self.is_leaf():
             self.items.insert(position, item)
+            self._count += 1
             self._p_note_change()
         else:
             child = self.nodes[position]
             if child.is_full():
                 self.split_child(position, child)
                 if key == self.items[position][0]:
-                     self.items[position] = item
-                     self._p_note_change()
+                    self.items[position] = item
+                    self._p_note_change()
                 else:
-                     if key > self.items[position][0]:
-                         position += 1
-                     self.nodes[position].insert_item(item)
+                    if key > self.items[position][0]:
+                        position += 1
+                    old_count = self.nodes[position]._count
+                    self.nodes[position].insert_item(item)
+                    self._count += self.nodes[position]._count - old_count
             else:
+                old_count = self.nodes[position]._count
                 self.nodes[position].insert_item(item)
+                self._count += self.nodes[position]._count - old_count
+
+    def _update_count(self):
+        """Update _count to match the actual item count."""
+        if self.is_leaf():
+            self._count = len(self.items)
+        else:
+            self._count = len(self.items)
+            for node in self.nodes:
+                self._count += node._count
+
+    def _change_count(self, delta):
+        """Update _count by delta."""
+        self._count += delta
+        return delta
+
+    def __len__(self):
+        return self._count
 
     def split_child(self, position, child):
         """(position:int, child:BNode)
@@ -126,15 +168,17 @@ class BNode (PersistentObject):
         bigger = self.__class__()
         middle = self.minimum_degree - 1
         splitting_key = child.items[middle]
-        bigger.items = child.items[middle + 1:]
+        bigger.items = child.items[middle + 1 :]
         child.items = child.items[:middle]
         assert len(bigger.items) == len(child.items)
         if not child.is_leaf():
-            bigger.nodes = child.nodes[middle + 1:]
-            child.nodes = child.nodes[:middle + 1]
+            bigger.nodes = child.nodes[middle + 1 :]
+            child.nodes = child.nodes[: middle + 1]
             assert len(bigger.nodes) == len(child.nodes)
         self.items.insert(position, splitting_key)
         self.nodes.insert(position + 1, bigger)
+        bigger._update_count()
+        child._count -= bigger._count + 1
         self._p_note_change()
 
     def get_min_item(self):
@@ -170,6 +214,7 @@ class BNode (PersistentObject):
             if matches:
                 # Case 1.
                 del self.items[p]
+                self._count -= 1
                 self._p_note_change()
             else:
                 raise KeyError(key)
@@ -183,11 +228,13 @@ class BNode (PersistentObject):
                     # Case 2a.
                     extreme = node.get_max_item()
                     node.delete(extreme[0])
+                    self._count -= 1
                     self.items[p] = extreme
                 elif is_big(upper_sibling):
                     # Case 2b.
                     extreme = upper_sibling.get_min_item()
                     upper_sibling.delete(extreme[0])
+                    self._count -= 1
                     self.items[p] = extreme
                 else:
                     # Case 2c.
@@ -196,6 +243,8 @@ class BNode (PersistentObject):
                     node.items = node.items + [extreme] + upper_sibling.items
                     if not node.is_leaf():
                         node.nodes = node.nodes + upper_sibling.nodes
+                    node._count += upper_sibling._count
+                    self._count -= 1
                     del self.items[p]
                     del self.nodes[p + 1]
                 self._p_note_change()
@@ -204,8 +253,10 @@ class BNode (PersistentObject):
                     if is_big(lower_sibling):
                         # Case 3a1: Shift an item from lower_sibling.
                         node.items.insert(0, self.items[p - 1])
+                        node._count += 1
                         self.items[p - 1] = lower_sibling.items[-1]
                         del lower_sibling.items[-1]
+                        lower_sibling._count -= 1
                         if not node.is_leaf():
                             node.nodes.insert(0, lower_sibling.nodes[-1])
                             del lower_sibling.nodes[-1]
@@ -213,32 +264,42 @@ class BNode (PersistentObject):
                     elif is_big(upper_sibling):
                         # Case 3a2: Shift an item from upper_sibling.
                         node.items.append(self.items[p])
+                        node._count += 1
                         self.items[p] = upper_sibling.items[0]
                         del upper_sibling.items[0]
+                        upper_sibling._count -= 1
                         if not node.is_leaf():
                             node.nodes.append(upper_sibling.nodes[0])
                             del upper_sibling.nodes[0]
                         upper_sibling._p_note_change()
                     elif lower_sibling:
                         # Case 3b1: Merge with lower_sibling
-                        node.items = (lower_sibling.items + [self.items[p-1]] +
-                                      node.items)
+                        node.items = (
+                            lower_sibling.items
+                            + [self.items[p - 1]]
+                            + node.items
+                        )
                         if not node.is_leaf():
                             node.nodes = lower_sibling.nodes + node.nodes
-                        del self.items[p-1]
-                        del self.nodes[p-1]
+                        node._count += lower_sibling._count + 1
+                        del self.items[p - 1]
+                        del self.nodes[p - 1]
                     else:
                         # Case 3b2: Merge with upper_sibling
-                        node.items = (node.items + [self.items[p]] +
-                                      upper_sibling.items)
+                        node.items = (
+                            node.items + [self.items[p]] + upper_sibling.items
+                        )
                         if not node.is_leaf():
                             node.nodes = node.nodes + upper_sibling.nodes
+                        node._count += upper_sibling._count + 1
                         del self.items[p]
-                        del self.nodes[p+1]
+                        del self.nodes[p + 1]
                     self._p_note_change()
                     node._p_note_change()
                 assert is_big(node)
+                old_count = node._count
                 node.delete(key)
+                self._count += node._count - old_count
             if not self.items:
                 # This can happen when self is the root node.
                 self.items = self.nodes[0].items
@@ -273,37 +334,37 @@ class BNode (PersistentObject):
             return 1 + self.nodes[0].get_level()
 
 
-class BNode4 (BNode):
-    __slots__ = []
+class BNode4(BNode):
     minimum_degree = 4
 
-class BNode8 (BNode):
-    __slots__ = []
+
+class BNode8(BNode):
     minimum_degree = 8
 
-class BNode16 (BNode):
-    __slots__ = []
+
+class BNode16(BNode):
     minimum_degree = 16
 
-class BNode32 (BNode):
-    __slots__ = []
+
+class BNode32(BNode):
     minimum_degree = 32
 
-class BNode64 (BNode):
-    __slots__ = []
+
+class BNode64(BNode):
     minimum_degree = 64
 
-class BNode128 (BNode):
-    __slots__ = []
+
+class BNode128(BNode):
     minimum_degree = 128
 
-class BNode256 (BNode):
-    __slots__ = []
+
+class BNode256(BNode):
     minimum_degree = 256
 
-class BNode512 (BNode):
-    __slots__ = []
+
+class BNode512(BNode):
     minimum_degree = 512
+
 
 # Set narrow specifications of BNode instance attributes.
 for bnode_class in [BNode] + BNode.__subclasses__():
@@ -312,12 +373,11 @@ for bnode_class in [BNode] + BNode.__subclasses__():
 del bnode_class
 
 
-class BTree (PersistentObject, collections.abc.MutableMapping):
+class BTree(PersistentObject, collections.abc.MutableMapping):
     """
     Instance attributes:
       root: BNode
     """
-    __slots__ = ['root']
 
     root_is = BNode
 
@@ -420,6 +480,7 @@ class BTree (PersistentObject, collections.abc.MutableMapping):
             # replace and split.
             node = self.root.__class__()
             node.nodes = [self.root]
+            node._count = self.root._count
             node.split_child(0, node.nodes[0])
             self.root = node
         self.root.insert_item((key, value))
@@ -438,8 +499,13 @@ class BTree (PersistentObject, collections.abc.MutableMapping):
 
     def __len__(self):
         """() -> int
-        Compute and return the total number of items."""
-        return self.root.get_count()
+        Return the total number of items."""
+        if isinstance(self.root._count, _NullCount):
+            # Handle old instance without a correct _count attribute.  This
+            # computes the number of items by iterating over all the nodes.
+            return self.root.get_count()
+        # If we have an up-to-date _count, fast O(1) version.
+        return self.root._count
 
     def items_backward(self):
         """() -> generator
