@@ -137,8 +137,14 @@ class BNode (PersistentObject):
         self._len += delta
         return delta
 
-    def __len__(self):
-        return self._len
+    def __getattr__(self, name):
+        """Backward compatibility for old pickled nodes without _len."""
+        if name == '_len':
+            # Old pickled node - compute and cache _len
+            count = self.get_count()
+            self._len = count
+            return count
+        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
     def split_child(self, position, child):
         """(position:int, child:BNode)
