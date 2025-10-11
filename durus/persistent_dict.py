@@ -32,7 +32,6 @@ class PersistentDict (PersistentObject, collections.abc.MutableMapping):
         if key in self.data:
             return self.data[key]
         if hasattr(self.__class__, "__missing__"):
-            self._p_note_change()
             return self.__class__.__missing__(self, key)
         raise KeyError(key)
 
