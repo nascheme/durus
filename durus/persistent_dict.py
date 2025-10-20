@@ -29,7 +29,11 @@ class PersistentDict (PersistentObject, collections.abc.MutableMapping):
         return len(self.data)
 
     def __getitem__(self, key):
-        return self.data[key]
+        if key in self.data:
+            return self.data[key]
+        if hasattr(self.__class__, "__missing__"):
+            return self.__class__.__missing__(self, key)
+        raise KeyError(key)
 
     def __setitem__(self, key, item):
         self._p_note_change()
