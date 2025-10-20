@@ -3,14 +3,21 @@ import sys, os
 
 from setuptools import setup, Extension
 
+IS_PYPY = hasattr(sys, 'pypy_version_info')
+
 if 'sdist' in sys.argv:
     if sys.platform == 'darwin':
         # Omit extended attributes from tarfile
         os.environ['COPYFILE_DISABLE'] = 'true'
 
+# Only build C extension for CPython
+if IS_PYPY:
+    ext_modules = []
+else:
+    persistent = Extension(name="durus._persistent",
+                          sources=["durus/_persistent.c"])
+    ext_modules = [persistent]
 
-persistent = Extension(name="durus._persistent",
-                       sources=["durus/_persistent.c"])
 setup(name = "Durus",
       version = __version__,
       description = "A Python Object Database",
@@ -25,7 +32,7 @@ setup(name = "Durus",
       author = "CNRI and others",
       author_email = "nas-durus@arctrix.com",
       url = "https://github.com/nascheme/durus",
-      ext_modules = [persistent],
+      ext_modules = ext_modules,
       license = "see LICENSE.txt",
       zip_safe=False,
       )

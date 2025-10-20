@@ -20,6 +20,7 @@ def int4_to_str(v):
 def str_to_int4(v):
     return unpack(">L", v)[0]
 
+IS_PYPY = hasattr(sys, 'pypy_version_info')
 
 if sys.version < "3":
     from __builtin__ import xrange
@@ -29,7 +30,11 @@ if sys.version < "3":
     def next(x):
         return x.next()
     from cStringIO import StringIO as BytesIO
-    from cPickle import dumps, loads, Unpickler, Pickler
+    if not IS_PYPY:
+        from cPickle import dumps, loads, Unpickler, Pickler
+    else:
+        # PyPy's pickle is faster than cPickle
+        from pickle import dumps, loads, Unpickler, Pickler
 else:
     xrange = range
     from builtins import next, bytearray, bytes

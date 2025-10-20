@@ -2,7 +2,7 @@
 $URL$
 $Id$
 """
-from durus.utils import str_to_int8, iteritems, as_bytes
+from durus.utils import str_to_int8, iteritems, as_bytes, IS_PYPY
 from sys import stderr
 
 # these must match the constants in _persistent.c
@@ -12,6 +12,9 @@ GHOST = -1
 
 
 try:
+    if IS_PYPY:
+        # C extensions are slower than pure Python on PyPy
+        raise ImportError("Use pure Python implementation on PyPy")
     from durus._persistent import PersistentBase, ConnectionBase
     from durus._persistent import _setattribute, _delattribute
     from durus._persistent import _getattribute, _hasattribute
@@ -127,7 +130,11 @@ class PersistentObject (PersistentBase):
     """
     All Durus persistent objects should inherit from this class.
     """
-    __slots__ = ['__weakref__']
+    if hasattr(PersistentBase, '__weakref__'):
+        # PyPy already defines __weakref__ in the base class
+        __slots__ = []
+    else:
+        __slots__ = ['__weakref__']
 
     def _p_gen_data_slots(self):
         """Generate the sequence of names of data slots that have values.
