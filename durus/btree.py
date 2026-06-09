@@ -21,6 +21,19 @@ class _NullCount:
         return self
 
 
+def _is_node(node):
+    """(node) -> bool
+    Return whether node is an actual BNode, as opposed to the None placeholder
+    that delete() uses to represent a missing sibling.
+
+    Do not rely on the truthiness of a node for this: BNode defines __len__
+    (so bool(node) reflects its item count), which means an empty node -- or a
+    legacy node whose count is an unknown _NullCount -- would test as falsy
+    even though it is a real, present node.
+    """
+    return node is not None
+
+
 class BNode(PersistentObject):
     """
     Instance attributes:
@@ -156,6 +169,9 @@ class BNode(PersistentObject):
         return delta
 
     def __len__(self):
+        if isinstance(self._count, _NullCount):
+            # Legacy node stored before _count existed: compute it the slow way.
+            return self.get_count()
         return self._count
 
     def split_child(self, position, child):
@@ -207,7 +223,7 @@ class BNode(PersistentObject):
         """
         def is_big(node):
             # Precondition for recursively calling node.delete(key).
-            return node and len(node.items) >= node.minimum_degree
+            return _is_node(node) and len(node.items) >= node.minimum_degree
         p = self.get_position(key)
         matches = p < len(self.items) and self.items[p][0] == key
         if self.is_leaf():
@@ -220,8 +236,9 @@ class BNode(PersistentObject):
                 raise KeyError(key)
         else:
             node = self.nodes[p]
-            lower_sibling = p > 0 and self.nodes[p - 1]
-            upper_sibling = p < len(self.nodes) - 1 and self.nodes[p + 1]
+            lower_sibling = self.nodes[p - 1] if p > 0 else None
+            upper_sibling = (
+                self.nodes[p + 1] if p < len(self.nodes) - 1 else None)
             if matches:
                 # Case 2.
                 if is_big(node):
@@ -272,7 +289,7 @@ class BNode(PersistentObject):
                             node.nodes.append(upper_sibling.nodes[0])
                             del upper_sibling.nodes[0]
                         upper_sibling._p_note_change()
-                    elif lower_sibling:
+                    elif _is_node(lower_sibling):
                         # Case 3b1: Merge with lower_sibling
                         node.items = (
                             lower_sibling.items
@@ -500,12 +517,9 @@ class BTree(PersistentObject, collections.abc.MutableMapping):
     def __len__(self):
         """() -> int
         Return the total number of items."""
-        if isinstance(self.root._count, _NullCount):
-            # Handle old instance without a correct _count attribute.  This
-            # computes the number of items by iterating over all the nodes.
-            return self.root.get_count()
-        # If we have an up-to-date _count, fast O(1) version.
-        return self.root._count
+        # BNode.__len__ returns the cached O(1) _count, falling back to a full
+        # count for legacy nodes stored before _count existed.
+        return len(self.root)
 
     def items_backward(self):
         """() -> generator

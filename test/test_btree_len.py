@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Test BTree _count tracking"""
 
-from durus.btree import BTree, BNode
+from durus.btree import BTree, BNode, BNode16, _NullCount
 
 
 def test_len_basic():
@@ -56,8 +56,51 @@ def test_len_with_deletes():
     print("Len tracking with deletes works")
 
 
+def _make_legacy(node):
+    """Make node (and descendants) look like data stored before _count
+    existed: remove the instance attribute so it falls back to the
+    class-default _NullCount() sentinel."""
+    node.__dict__.pop('_count', None)
+    assert isinstance(node._count, _NullCount)
+    for n in (node.nodes or []):
+        _make_legacy(n)
+
+
+def test_legacy_len_and_delete():
+    """Nodes stored before _count existed have a _NullCount sentinel.
+
+    len() must still work (via the get_count() fallback) and, crucially,
+    delete() must not choke on the sentinel.  Regression test for a
+    TypeError ("'_NullCount' object cannot be interpreted as an integer")
+    raised once BNode grew a __len__ that routes bool(node) through _count.
+    """
+    for node_class in (BNode, BNode16):
+        bt = BTree(node_class)
+        ref = {}
+        for i in range(300):
+            bt[i] = i * i
+            ref[i] = i * i
+        _make_legacy(bt.root)
+
+        # O(1) path is unavailable for legacy nodes; fall back to get_count().
+        assert len(bt) == len(ref)
+        # len() on the node itself must also use the fallback, not leak the
+        # _NullCount sentinel.
+        assert len(bt.root) == len(ref)
+
+        # Deletion must work despite the _NullCount sentinel.
+        for k in list(range(300)):
+            del bt[k]
+            del ref[k]
+            assert sorted(bt.keys()) == sorted(ref.keys())
+        assert len(bt) == 0
+        assert list(bt.items()) == []
+    print("Legacy _NullCount len/delete works")
+
+
 if __name__ == '__main__':
     test_len_basic()
     test_len_with_splits()
     test_len_with_deletes()
+    test_legacy_len_and_delete()
     print("\nAll BTree _len tests passed")
