@@ -254,40 +254,56 @@ class BNode(PersistentObject):
                     self._count -= 1
                     self.items[p] = extreme
                 else:
-                    # Case 2c.
-                    extreme = upper_sibling.get_min_item()
-                    upper_sibling.delete(extreme[0])
-                    node.items = node.items + [extreme] + upper_sibling.items
+                    # Case 2c: both adjacent children have only t-1 items.
+                    # Merge the key and upper_sibling into node (giving 2t-1
+                    # items), then delete the key from the merged node.  We
+                    # cannot simply delete from a child here: with only t-1
+                    # items it could underflow.  After merging, node is big
+                    # enough to delete from safely.
+                    node.items = node.items + [self.items[p]] + upper_sibling.items
                     if not node.is_leaf():
                         node.nodes = node.nodes + upper_sibling.nodes
-                    node._count += upper_sibling._count
-                    self._count -= 1
+                    node._count += upper_sibling._count + 1
                     del self.items[p]
                     del self.nodes[p + 1]
+                    node._p_note_change()
+                    old_count = node._count
+                    node.delete(key)
+                    self._count += node._count - old_count
                 self._p_note_change()
             else:
                 if not is_big(node):
                     if is_big(lower_sibling):
                         # Case 3a1: Shift an item from lower_sibling.
                         node.items.insert(0, self.items[p - 1])
-                        node._count += 1
                         self.items[p - 1] = lower_sibling.items[-1]
                         del lower_sibling.items[-1]
-                        lower_sibling._count -= 1
+                        # node gains the separator item (1); for an internal
+                        # node it also adopts one of lower_sibling's children,
+                        # whose whole subtree must move between the counts.
+                        moved = 1
                         if not node.is_leaf():
-                            node.nodes.insert(0, lower_sibling.nodes[-1])
+                            child = lower_sibling.nodes[-1]
+                            node.nodes.insert(0, child)
                             del lower_sibling.nodes[-1]
+                            moved += child._count
+                        node._count += moved
+                        lower_sibling._count -= moved
                         lower_sibling._p_note_change()
                     elif is_big(upper_sibling):
                         # Case 3a2: Shift an item from upper_sibling.
                         node.items.append(self.items[p])
-                        node._count += 1
                         self.items[p] = upper_sibling.items[0]
                         del upper_sibling.items[0]
-                        upper_sibling._count -= 1
+                        # See Case 3a1: account for the adopted child subtree.
+                        moved = 1
                         if not node.is_leaf():
-                            node.nodes.append(upper_sibling.nodes[0])
+                            child = upper_sibling.nodes[0]
+                            node.nodes.append(child)
                             del upper_sibling.nodes[0]
+                            moved += child._count
+                        node._count += moved
+                        upper_sibling._count -= moved
                         upper_sibling._p_note_change()
                     elif _is_node(lower_sibling):
                         # Case 3b1: Merge with lower_sibling
