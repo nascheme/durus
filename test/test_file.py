@@ -1,21 +1,18 @@
-"""
-$URL$
-$Id$
-"""
+import pytest
 from durus.file import File
 from durus.utils import as_bytes
 from os import unlink
 from os.path import exists
-from sancho.utest import UTest, raises
 from tempfile import mktemp
 
-class FileTest (UTest):
 
-    def a(self):
+class TestFile:
+    def test_a(self):
         f = File()
         f.rename(f.get_name())
         assert f.is_temporary()
-        raises(AssertionError, f.rename, f.get_name() + '.renamed')
+        with pytest.raises(AssertionError):
+            f.rename(f.get_name() + '.renamed')
         test_name = f.get_name() + '.test'
         assert not exists(test_name)
         tmp = open(test_name, 'w+b')
@@ -31,7 +28,8 @@ class FileTest (UTest):
         assert as_bytes('bc') == f.read()
         f.close()
         assert not exists(f.get_name())
-        raises(OSError, f.__len__) # tmpfile removed on close
+        with pytest.raises(OSError):
+            f.__len__()  # tmpfile removed on close
         h = File(g.get_name())
         g.write(as_bytes('a'))
         g.seek(0)
@@ -40,7 +38,8 @@ class FileTest (UTest):
         assert g.tell() == 1
         assert g.has_lock
         assert not h.has_lock
-        raises(IOError, h.write, as_bytes('b'))
+        with pytest.raises(IOError):
+            h.write(as_bytes('b'))
         g.flush()
         g.fsync()
         g.seek(0)
@@ -49,19 +48,22 @@ class FileTest (UTest):
         h.close()
         unlink(g.get_name())
 
-    def b(self):
+    def test_b(self):
         name = mktemp()
-        raises(OSError, File, name, readonly=True)
+        with pytest.raises(OSError):
+            File(name, readonly=True)
         g = File(name, readonly=False)
         g.close()
         f = File(name, readonly=True)
         assert f.is_readonly()
-        raises(AssertionError, f.write, 'ok')
-        raises(IOError, f.file.write, 'ok') # readonly file
+        with pytest.raises(AssertionError):
+            f.write('ok')
+        with pytest.raises(IOError):
+            f.file.write('ok')  # readonly file
         f.close()
         unlink(name)
 
-    def c(self):
+    def test_c(self):
         name = mktemp()
         name2 = mktemp()
         f = File(name)
@@ -73,7 +75,3 @@ class FileTest (UTest):
         assert not exists(name)
         f.close()
         unlink(name2)
-
-if __name__ == '__main__':
-    FileTest()
-

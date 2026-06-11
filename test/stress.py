@@ -1,9 +1,9 @@
 #!/usr/bin/env python
-"""A client that stress tests a Durus storage server.
-"""
+"""A client that stress tests a Durus storage server."""
 
 from __future__ import division
-[division] # for checker
+
+[division]  # for checker
 import os
 import sys
 import time
@@ -15,7 +15,7 @@ from durus.client_storage import ClientStorage
 from durus.connection import Connection
 from durus.error import ConflictError
 
-if sys.version < "2.6":
+if sys.version < '2.6':
     from md5 import new as md5_new
 else:
     from hashlib import md5 as md5_new
@@ -25,11 +25,15 @@ MAX_DEPTH = 20
 MAX_OBJECT_SIZE = 4000
 
 _SLEEP_TIMES = [0, 0, 0, 0, 0.1, 0.2]
+
+
 def maybe_sleep():
     time.sleep(random.choice(_SLEEP_TIMES))
 
+
 def randbool():
     return random.random() <= 0.5
+
 
 class Counter:
     def __init__(self):
@@ -79,8 +83,10 @@ class Container(Persistent):
             else:
                 random.choice(self.children).verify(sum + self.value)
 
+
 # make pickle happy
 from durus.test.stress import Container
+
 
 def init_db(connection):
     sys.stdout.write('creating object graph\n')
@@ -89,10 +95,12 @@ def init_db(connection):
     root['obj'] = obj
     obj.create_children(Counter())
 
+
 def verify_db(connection, all=False):
     sys.stdout.write('verifying\n')
     root = connection.get_root()
     root['obj'].verify(all=all)
+
 
 def mutate_db(connection):
     n = random.choice([2**i for i in range(8)])
@@ -101,7 +109,7 @@ def mutate_db(connection):
         depth = random.randint(1, MAX_DEPTH)
         parent = connection.get_root()['obj']
         while True:
-            k = random.randint(0, len(parent.children)-1)
+            k = random.randint(0, len(parent.children) - 1)
             depth -= 1
             if depth > 0 and parent.children[k].children:
                 parent = parent.children[k]
@@ -118,21 +126,41 @@ def mutate_db(connection):
             # just mutate it's data
             obj.generate_data()
 
+
 def main():
     parser = OptionParser()
     parser.set_description('Stress test a Durus Server')
-    parser.add_option('--port', dest='port', default=DEFAULT_PORT, type='int',
-                      help='Port to listen on. (default=%s)' % DEFAULT_PORT)
-    parser.add_option('--host', dest='host', default=DEFAULT_HOST,
-                      help='Host to listen on. (default=%s)' % DEFAULT_HOST)
-    parser.add_option('--cache_size', dest="cache_size", default=4000,
-                      type="int",
-                      help="Size of client cache (default=4000)")
-    parser.add_option('--max-loops', dest='loops', default=None, type='int',
-                      help='Maximum number of loops before exiting.')
+    parser.add_option(
+        '--port',
+        dest='port',
+        default=DEFAULT_PORT,
+        type='int',
+        help='Port to listen on. (default=%s)' % DEFAULT_PORT,
+    )
+    parser.add_option(
+        '--host',
+        dest='host',
+        default=DEFAULT_HOST,
+        help='Host to listen on. (default=%s)' % DEFAULT_HOST,
+    )
+    parser.add_option(
+        '--cache_size',
+        dest='cache_size',
+        default=4000,
+        type='int',
+        help='Size of client cache (default=4000)',
+    )
+    parser.add_option(
+        '--max-loops',
+        dest='loops',
+        default=None,
+        type='int',
+        help='Maximum number of loops before exiting.',
+    )
 
     (options, args) = parser.parse_args()
     from durus.logger import logger
+
     logger.setLevel(5)
     storage = ClientStorage(host=options.host, port=options.port)
     connection = Connection(storage, cache_size=options.cache_size)
@@ -160,6 +188,7 @@ def main():
             sys.stdout.write('conflict\n')
             connection.abort()
             maybe_sleep()
+
 
 if __name__ == '__main__':
     main()

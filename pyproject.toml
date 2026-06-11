@@ -1,3 +1,14 @@
 [build-system]
 requires = ["setuptools", "wheel"]
 
+[tool.pytest.ini_options]
+testpaths = ["test"]
+
+[tool.ruff]
+line-length = 78
+
+[tool.ruff.lint.pycodestyle]
+max-line-length = 78
+
+[tool.ruff.format]
+quote-style = "preserve"

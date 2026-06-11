@@ -20,7 +20,7 @@ def test_len_basic():
         # Also check the slow method matches
         assert bt.root.get_count() == i + 1
 
-    print("Basic len tracking works")
+    print('Basic len tracking works')
 
 
 def test_len_with_splits():
@@ -34,7 +34,7 @@ def test_len_with_splits():
         assert bt.root._count == i + 1
         assert bt.root.get_count() == i + 1
 
-    print("Len tracking with splits works")
+    print('Len tracking with splits works')
 
 
 def test_len_with_deletes():
@@ -53,7 +53,7 @@ def test_len_with_deletes():
         assert bt.root._count == expected
         assert bt.root.get_count() == expected
 
-    print("Len tracking with deletes works")
+    print('Len tracking with deletes works')
 
 
 def _make_legacy(node):
@@ -62,7 +62,7 @@ def _make_legacy(node):
     class-default _NullCount() sentinel."""
     node.__dict__.pop('_count', None)
     assert isinstance(node._count, _NullCount)
-    for n in (node.nodes or []):
+    for n in node.nodes or []:
         _make_legacy(n)
 
 
@@ -95,7 +95,7 @@ def test_legacy_len_and_delete():
             assert sorted(bt.keys()) == sorted(ref.keys())
         assert len(bt) == 0
         assert list(bt.items()) == []
-    print("Legacy _NullCount len/delete works")
+    print('Legacy _NullCount len/delete works')
 
 
 if __name__ == '__main__':
@@ -103,4 +103,4 @@ if __name__ == '__main__':
     test_len_with_splits()
     test_len_with_deletes()
     test_legacy_len_and_delete()
-    print("\nAll BTree _len tests passed")
+    print('\nAll BTree _len tests passed')

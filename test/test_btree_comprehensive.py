@@ -11,7 +11,7 @@ def test_comprehensive():
     data = {}
 
     # Add many random items
-    print("Testing inserts...")
+    print('Testing inserts...')
     for _ in range(500):
         key = random.randint(0, 1000)
         value = random.randint(0, 1000)
@@ -21,12 +21,12 @@ def test_comprehensive():
         assert bt.root._count == bt.root.get_count()
 
     # Verify all items are there
-    print("Verifying data...")
+    print('Verifying data...')
     for key, value in data.items():
         assert bt[key] == value
 
     # Delete random items
-    print("Testing deletes...")
+    print('Testing deletes...')
     keys_to_delete = random.sample(list(data.keys()), min(100, len(data)))
     for key in keys_to_delete:
         del bt[key]
@@ -35,16 +35,16 @@ def test_comprehensive():
         assert bt.root._count == bt.root.get_count()
 
     # Verify remaining items
-    print("Verifying remaining data...")
+    print('Verifying remaining data...')
     for key, value in data.items():
         assert bt[key] == value
 
     # Test that _count is always consistent
-    print("Final consistency check...")
+    print('Final consistency check...')
     assert len(bt) == len(data)
     assert bt.root._count == bt.root.get_count()
 
-    print(f"All tests passed! Final size: {len(bt)} items")
+    print(f'All tests passed! Final size: {len(bt)} items')
 
 
 if __name__ == '__main__':

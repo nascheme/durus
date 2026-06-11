@@ -18,7 +18,9 @@ from durus.btree import BTree, BNode, BNode4, _NullCount
 
 def _check_counts(node):
     """Assert the cached _count equals the real subtree size, recursively."""
-    actual = len(node.items) + sum(_check_counts(c) for c in (node.nodes or []))
+    actual = len(node.items) + sum(
+        _check_counts(c) for c in (node.nodes or [])
+    )
     assert not isinstance(node._count, _NullCount)
     assert node._count == actual, (node._count, actual)
     return actual
@@ -34,8 +36,8 @@ def _run(node_class, insert, delete):
     for k in delete:
         del bt[k]
         del ref[k]
-        assert sorted(bt.keys()) == sorted(ref.keys()), (k, "keys")
-        assert len(bt) == len(ref), (k, "len")
+        assert sorted(bt.keys()) == sorted(ref.keys()), (k, 'keys')
+        assert len(bt) == len(ref), (k, 'len')
         _check_counts(bt.root)
     return bt
 
@@ -77,4 +79,4 @@ if __name__ == '__main__':
     test_delete_case_2c_does_not_collapse_sibling()
     test_delete_rotation_keeps_count_consistent()
     test_delete_all_orders_small_exhaustive()
-    print("All BTree delete regression tests passed")
+    print('All BTree delete regression tests passed')
